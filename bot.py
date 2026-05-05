@@ -1,338 +1,659 @@
 """
-Bot prezzi Alghero - Voli, Traghetti, Alloggi
-Monitora i prezzi e invia notifiche Telegram quando scendono.
+Bot prezzi Alghero v2 - Scraper robusti + Dashboard
 """
 
-import os
-import json
-import time
-import random
-import requests
+import os, json, time, random, re, sys
 from datetime import datetime
+from pathlib import Path
+import requests
 from bs4 import BeautifulSoup
 
-# ─── CONFIGURAZIONE ────────────────────────────────────────────────────────────
+# ─── CONFIG ────────────────────────────────────────────────────────────────────
 
-TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
+TELEGRAM_TOKEN   = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
-# Soglie "prezzo ottimo" — ricevi notifica anche se non è un nuovo minimo
-SOGLIE_OTTIME = {
-    "volo_ita_ar_2persone": 200,      # ITA Airways A/R per 2 persone (€)
-    "traghetto_ar_2persone": 250,     # Grimaldi A/R piedi per 2 persone (€)
-    "alloggio_notte": 80,             # Per notte totale appartamento (€)
-}
-
-# Date flessibili da monitorare (formato YYYY-MM-DD)
 DATE_FINESTRE = [
-    ("2026-08-27", "2026-08-30"),  # 3 notti
-    ("2026-08-28", "2026-09-01"),  # 4 notti
-    ("2026-08-31", "2026-09-03"),  # 3 notti
-    ("2026-08-31", "2026-09-04"),  # 4 notti
-    ("2026-09-01", "2026-09-04"),  # 3 notti
+    ("2026-08-27", "2026-08-30"),
+    ("2026-08-28", "2026-09-01"),
+    ("2026-08-31", "2026-09-03"),
+    ("2026-08-31", "2026-09-04"),
+    ("2026-09-01", "2026-09-04"),
 ]
 
-FILE_PREZZI = "data/prezzi.json"
+SOGLIE_OTTIME = {
+    "volo":      200,   # A/R 2 persone €
+    "traghetto": 220,   # A/R 2 persone €
+    "alloggio":  80,    # per notte €
+}
+
+FILE_STORICO  = Path("data/storico.json")
+FILE_DASHBOARD = Path("docs/index.html")
+
+SESSIONE = requests.Session()
 
 # ─── UTILS ─────────────────────────────────────────────────────────────────────
 
-def carica_prezzi_precedenti():
-    if os.path.exists(FILE_PREZZI):
-        with open(FILE_PREZZI, "r") as f:
-            return json.load(f)
+UA_LIST = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0",
+]
+
+def hdrs(referer=None):
+    h = {
+        "User-Agent": random.choice(UA_LIST),
+        "Accept-Language": "it-IT,it;q=0.9",
+        "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+    }
+    if referer:
+        h["Referer"] = referer
+    return h
+
+def pausa(a=4, b=9):
+    time.sleep(random.uniform(a, b))
+
+def estrai_primo_numero(testo):
+    """Estrae il primo numero intero ragionevole da una stringa."""
+    nums = re.findall(r'\b(\d{2,4})\b', testo.replace('.','').replace(',',''))
+    for n in nums:
+        v = int(n)
+        if 30 < v < 5000:
+            return float(v)
+    return None
+
+def carica_storico():
+    if FILE_STORICO.exists():
+        return json.loads(FILE_STORICO.read_text())
     return {}
 
-def salva_prezzi(prezzi):
-    os.makedirs("data", exist_ok=True)
-    with open(FILE_PREZZI, "w") as f:
-        json.dump(prezzi, f, indent=2, ensure_ascii=False)
+def salva_storico(st):
+    FILE_STORICO.parent.mkdir(exist_ok=True)
+    FILE_STORICO.write_text(json.dumps(st, indent=2, ensure_ascii=False))
 
-def invia_telegram(messaggio):
+def telegram(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": messaggio,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True,
-    }
     try:
-        r = requests.post(url, json=payload, timeout=10)
+        r = requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID,
+                                      "text": msg, "parse_mode": "HTML",
+                                      "disable_web_page_preview": True}, timeout=10)
         r.raise_for_status()
-        print(f"[OK] Messaggio Telegram inviato")
+        print(f"  [TG] ✓ notifica inviata")
     except Exception as e:
-        print(f"[ERRORE] Telegram: {e}")
+        print(f"  [TG] ✗ errore: {e}")
 
-def headers_casuali():
-    user_agents = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
-        "Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0",
-    ]
-    return {
-        "User-Agent": random.choice(user_agents),
-        "Accept-Language": "it-IT,it;q=0.9,en;q=0.8",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    }
+# ─── SCRAPER VOLI ───────────────────────────────────────────────────────────────
 
-def pausa():
-    time.sleep(random.uniform(3, 7))
-
-# ─── SCRAPER VOLI (Kayak) ──────────────────────────────────────────────────────
-
-def cerca_voli(data_andata, data_ritorno):
-    """
-    Cerca voli ITA Airways FCO→AHO su Kayak.
-    Restituisce il prezzo minimo trovato per 2 persone A/R, o None.
-    """
-    da = datetime.strptime(data_andata, "%Y-%m-%d").strftime("%Y-%m-%d")
-    a = datetime.strptime(data_ritorno, "%Y-%m-%d").strftime("%Y-%m-%d")
-    url = f"https://www.kayak.it/flights/FCO-AHO/{da}/{a}/2adults?sort=price_a"
-
+def cerca_volo_ita(data_andata, data_ritorno):
+    """Cerca voli su ITA Airways via deep link JSON."""
     try:
-        r = requests.get(url, headers=headers_casuali(), timeout=15)
+        url = (
+            f"https://www.ita-airways.com/it_it/voli-offerte/offerte-voli.html"
+            f"?departure=FCO&arrival=AHO"
+            f"&departureDate={data_andata}&returnDate={data_ritorno}&adults=2"
+        )
+        r = SESSIONE.get(url, headers=hdrs(), timeout=15, allow_redirects=True)
         soup = BeautifulSoup(r.text, "html.parser")
 
-        # Kayak mostra i prezzi in elementi con classe che include "price"
-        # Cerchiamo il primo prezzo nella pagina (già ordinati per prezzo)
-        prezzi = []
-        for el in soup.find_all(attrs={"class": lambda c: c and "price" in c.lower()}):
-            testo = el.get_text(strip=True).replace("€", "").replace(".", "").replace(",", ".").strip()
-            try:
-                val = float("".join(c for c in testo if c.isdigit() or c == "."))
-                if 50 < val < 2000:
-                    prezzi.append(val)
-            except ValueError:
-                pass
+        # Cerca script JSON con prezzi
+        for script in soup.find_all("script"):
+            txt = script.string or ""
+            if "price" in txt.lower() and "FCO" in txt:
+                matches = re.findall(r'"(?:total|amount|price)"\s*:\s*(\d+\.?\d*)', txt)
+                valori = [float(m) for m in matches if 50 < float(m) < 3000]
+                if valori:
+                    minimo = min(valori)
+                    print(f"  [VOLO ITA] trovato €{minimo:.0f}")
+                    return minimo
 
-        if prezzi:
-            minimo = min(prezzi)
-            print(f"[VOLO] {da}→{a}: minimo trovato €{minimo:.0f} (2 pers A/R)")
+        # Fallback: cerca prezzi nel testo visibile
+        testo = soup.get_text()
+        prezzi = re.findall(r'€\s*(\d{2,4})', testo)
+        valori = [int(p) for p in prezzi if 50 < int(p) < 3000]
+        if valori:
+            minimo = min(valori)
+            print(f"  [VOLO ITA] trovato (fallback) €{minimo:.0f}")
             return minimo
-        else:
-            print(f"[VOLO] {da}→{a}: nessun prezzo trovato nel DOM")
-            return None
 
     except Exception as e:
-        print(f"[ERRORE] Volo {da}→{a}: {e}")
-        return None
+        print(f"  [VOLO ITA] errore: {e}")
 
-# ─── SCRAPER TRAGHETTO (DirectFerries) ─────────────────────────────────────────
+    # Secondo tentativo: Skyscanner mobile (meno protetto)
+    try:
+        pausa(2, 4)
+        da_fmt = datetime.strptime(data_andata, "%Y-%m-%d").strftime("%y%m%d")
+        url2 = f"https://www.skyscanner.it/trasporti/voli/fco/aho/{da_fmt}/"
+        r2 = SESSIONE.get(url2, headers=hdrs("https://www.skyscanner.it"), timeout=15)
+        testo2 = r2.text
+        prezzi2 = re.findall(r'€\s*(\d{2,4})', testo2)
+        valori2 = [int(p) for p in prezzi2 if 50 < int(p) < 3000]
+        if valori2:
+            minimo2 = min(valori2) * 2  # sola andata → moltiplica x2 per A/R
+            print(f"  [VOLO SKY] trovato €{minimo2:.0f} (2 pers A/R est.)")
+            return float(minimo2)
+    except Exception as e:
+        print(f"  [VOLO SKY] errore: {e}")
+
+    print(f"  [VOLO] nessun prezzo trovato")
+    return None
+
+# ─── SCRAPER TRAGHETTI ──────────────────────────────────────────────────────────
 
 def cerca_traghetto(data_andata, data_ritorno):
-    """
-    Cerca il prezzo del traghetto Civitavecchia→Porto Torres su DirectFerries.
-    Restituisce prezzo A/R per 2 passeggeri a piedi, o None.
-    """
-    # DirectFerries ha URL parametrizzati
-    da_str = datetime.strptime(data_andata, "%Y-%m-%d").strftime("%d-%m-%Y")
-    a_str = datetime.strptime(data_ritorno, "%Y-%m-%d").strftime("%d-%m-%Y")
-    url = (
-        f"https://www.directferries.it/book_ferry.htm"
-        f"?operator=0&depart=Civitavecchia&arrive=Porto+Torres"
-        f"&depart_date={da_str}&return_date={a_str}&adults=2&children=0&return=1"
-    )
-
+    """Cerca traghetto Civitavecchia→Porto Torres su Traghettilines."""
     try:
-        r = requests.get(url, headers=headers_casuali(), timeout=15)
+        da_fmt = datetime.strptime(data_andata, "%Y-%m-%d").strftime("%d/%m/%Y")
+        ar_fmt = datetime.strptime(data_ritorno, "%Y-%m-%d").strftime("%d/%m/%Y")
+
+        url = (
+            "https://www.traghettilines.it/search?"
+            f"departure=Civitavecchia&arrival=Porto+Torres"
+            f"&outDate={da_fmt}&retDate={ar_fmt}&adults=2&vehicles=0"
+        )
+        r = SESSIONE.get(url, headers=hdrs("https://www.traghettilines.it"), timeout=20)
         soup = BeautifulSoup(r.text, "html.parser")
 
         prezzi = []
-        for el in soup.find_all(string=lambda t: t and "€" in t):
-            testo = el.strip().replace("€", "").replace(".", "").replace(",", ".").strip()
-            try:
-                val = float("".join(c for c in testo if c.isdigit() or c == "."))
-                if 30 < val < 1000:
-                    prezzi.append(val)
-            except ValueError:
-                pass
+        # Cerca elementi prezzo specifici di traghettilines
+        for el in soup.find_all(class_=re.compile(r'price|prezzo|costo|tariff', re.I)):
+            v = estrai_primo_numero(el.get_text())
+            if v:
+                prezzi.append(v)
+
+        # Fallback testo grezzo
+        if not prezzi:
+            testo = soup.get_text()
+            matches = re.findall(r'€\s*(\d{2,3}(?:[.,]\d{2})?)', testo)
+            prezzi = [float(m.replace(',', '.')) for m in matches if 20 < float(m.replace(',','.')) < 800]
 
         if prezzi:
-            minimo = min(prezzi)
-            totale_2pers = minimo * 2
-            print(f"[TRAGHETTO] {da_str}→{a_str}: €{minimo:.0f} pp → €{totale_2pers:.0f} (2 pers A/R)")
-            return totale_2pers
-        else:
-            print(f"[TRAGHETTO] {da_str}→{a_str}: nessun prezzo trovato")
-            return None
+            minimo_pp = min(prezzi)
+            totale = minimo_pp * 2
+            print(f"  [TRAGHETTO] trovato €{minimo_pp:.0f}/pp → €{totale:.0f} (2 pers A/R)")
+            return totale
 
     except Exception as e:
-        print(f"[ERRORE] Traghetto {da_str}→{a_str}: {e}")
-        return None
+        print(f"  [TRAGHETTO TL] errore: {e}")
 
-# ─── SCRAPER ALLOGGIO (Booking.com) ────────────────────────────────────────────
+    # Fallback: Grimaldi diretto
+    try:
+        pausa(2, 4)
+        url2 = "https://www.grimaldi-lines.com/it/prenota/"
+        r2 = SESSIONE.get(url2, headers=hdrs(), timeout=15)
+        testo2 = r2.text
+        matches2 = re.findall(r'€\s*(\d{2,3})', testo2)
+        valori2 = [int(m) for m in matches2 if 20 < int(m) < 500]
+        if valori2:
+            minimo2 = min(valori2) * 2
+            print(f"  [TRAGHETTO GR] trovato €{minimo2:.0f} (2 pers A/R est.)")
+            return float(minimo2)
+    except Exception as e:
+        print(f"  [TRAGHETTO GR] errore: {e}")
+
+    print(f"  [TRAGHETTO] nessun prezzo trovato")
+    return None
+
+# ─── SCRAPER ALLOGGI ────────────────────────────────────────────────────────────
 
 def cerca_alloggio(data_andata, data_ritorno):
-    """
-    Cerca appartamenti 2 camere ad Alghero su Booking.com.
-    Restituisce il prezzo minimo per notte trovato, o None.
-    """
-    checkin = data_andata
-    checkout = data_ritorno
-    notti = (datetime.strptime(data_ritorno, "%Y-%m-%d") - datetime.strptime(data_andata, "%Y-%m-%d")).days
-
-    url = (
-        f"https://www.booking.com/searchresults.it.html"
-        f"?ss=Alghero&checkin={checkin}&checkout={checkout}"
-        f"&group_adults=2&no_rooms=1&nflt=entire_place%3D1%3Broom_amenities%3D18"
-        f"&order=price"
-    )
-
+    """Cerca appartamenti 2 camere ad Alghero via Airbnb API pubblica."""
+    notti = (datetime.strptime(data_ritorno, "%Y-%m-%d") -
+             datetime.strptime(data_andata, "%Y-%m-%d")).days
     try:
-        r = requests.get(url, headers=headers_casuali(), timeout=15)
-        soup = BeautifulSoup(r.text, "html.parser")
+        # Airbnb ha un endpoint di ricerca non autenticato
+        url = (
+            "https://www.airbnb.it/api/v3/ExploreSearch?"
+            "operationName=ExploreSearch&locale=it&currency=EUR"
+        )
+        params = {
+            "query": "Alghero, Sardegna",
+            "checkin": data_andata,
+            "checkout": data_ritorno,
+            "adults": "2",
+            "min_bedrooms": "2",
+            "room_types[]": "Entire home/apt",
+            "items_per_grid": "20",
+        }
+        r = SESSIONE.get(url, params=params,
+                         headers={**hdrs(), "X-Airbnb-API-Key": "d306zoyjsyarp7uqge35bnmfkm"},
+                         timeout=15)
+        data = r.json()
 
         prezzi = []
-        for el in soup.find_all(attrs={"data-testid": "price-and-discounted-price"}):
-            testo = el.get_text(strip=True).replace("€", "").replace(".", "").replace(",", ".").strip()
-            try:
-                val = float("".join(c for c in testo if c.isdigit() or c == "."))
-                if 50 < val < 10000:
-                    prezzi.append(val)
-            except ValueError:
-                pass
+        # Naviga la struttura JSON di Airbnb
+        sections = (data.get("data", {})
+                        .get("presentation", {})
+                        .get("explore", {})
+                        .get("sections", {})
+                        .get("sections", []))
+        for section in sections:
+            for item in section.get("items", []):
+                listing = item.get("listing", {})
+                pricing = item.get("pricingQuote", {})
+                rate = pricing.get("structuredStayDisplayPrice", {})
+                # Cerca prezzo totale
+                txt = json.dumps(rate)
+                matches = re.findall(r'(\d{2,4})', txt)
+                for m in matches:
+                    v = int(m)
+                    if 50 < v < 5000:
+                        prezzi.append(float(v))
 
         if prezzi:
             minimo_totale = min(prezzi)
-            per_notte = round(minimo_totale / notti, 0) if notti > 0 else minimo_totale
-            print(f"[ALLOGGIO] {checkin}→{checkout}: €{minimo_totale:.0f} totale ({notti} notti) = €{per_notte:.0f}/notte")
-            return {"totale": minimo_totale, "per_notte": per_notte, "notti": notti}
-        else:
-            print(f"[ALLOGGIO] {checkin}→{checkout}: nessun prezzo trovato")
-            return None
+            per_notte = round(minimo_totale / notti, 0)
+            print(f"  [AIRBNB] trovato €{minimo_totale:.0f} totale = €{per_notte:.0f}/notte")
+            return {"per_notte": per_notte, "totale": minimo_totale, "notti": notti}
 
     except Exception as e:
-        print(f"[ERRORE] Alloggio {checkin}→{checkout}: {e}")
-        return None
+        print(f"  [AIRBNB API] errore: {e}")
 
-# ─── LOGICA NOTIFICHE ──────────────────────────────────────────────────────────
+    # Fallback: Airbnb HTML
+    try:
+        pausa(3, 6)
+        url2 = (
+            f"https://www.airbnb.it/s/Alghero--Sardegna/homes"
+            f"?checkin={data_andata}&checkout={data_ritorno}"
+            f"&adults=2&min_bedrooms=2&room_types[]=Entire+home%2Fapt"
+        )
+        r2 = SESSIONE.get(url2, headers=hdrs("https://www.airbnb.it"), timeout=20)
+        soup2 = BeautifulSoup(r2.text, "html.parser")
 
-def controlla_e_notifica(chiave, nuovo_prezzo, vecchio_prezzo, soglia_ottima, etichetta, url_prenotazione):
-    messaggi = []
+        # Cerca dati JSON embedded nella pagina
+        for script in soup2.find_all("script", type="application/json"):
+            txt = script.string or ""
+            if "price" in txt.lower() and len(txt) > 500:
+                matches = re.findall(r'"amount"\s*:\s*(\d+)', txt)
+                valori = [int(m) for m in matches if 30 < int(m) < 5000]
+                if valori:
+                    minimo = min(valori)
+                    per_notte = round(minimo / notti, 0)
+                    print(f"  [AIRBNB HTML] trovato €{minimo:.0f} totale = €{per_notte:.0f}/notte")
+                    return {"per_notte": per_notte, "totale": minimo, "notti": notti}
+
+        # Ultima spiaggia: regex sul testo
+        testo = soup2.get_text()
+        prezzi_txt = re.findall(r'€\s*(\d{2,4})', testo)
+        valori_txt = [int(p) for p in prezzi_txt if 40 < int(p) < 3000]
+        if valori_txt:
+            minimo = min(valori_txt)
+            # Se è un prezzo per notte
+            if minimo < 500:
+                totale = minimo * notti
+                print(f"  [AIRBNB TXT] trovato €{minimo:.0f}/notte → €{totale:.0f} totale")
+                return {"per_notte": float(minimo), "totale": float(totale), "notti": notti}
+
+    except Exception as e:
+        print(f"  [AIRBNB HTML] errore: {e}")
+
+    print(f"  [ALLOGGIO] nessun prezzo trovato")
+    return None
+
+# ─── LOGICA NOTIFICHE ───────────────────────────────────────────────────────────
+
+def controlla_notifiche(chiave, nuovo, vecchio, soglia, label, link):
+    msgs = []
     ora = datetime.now().strftime("%d/%m %H:%M")
 
-    # Notifica se prezzo scende rispetto al precedente
-    if vecchio_prezzo is not None and nuovo_prezzo < vecchio_prezzo:
-        risparmio = vecchio_prezzo - nuovo_prezzo
-        messaggi.append(
-            f"📉 <b>Prezzo sceso!</b> — {etichetta}\n"
-            f"<b>€{nuovo_prezzo:.0f}</b> (era €{vecchio_prezzo:.0f}, -€{risparmio:.0f})\n"
-            f"🔗 <a href='{url_prenotazione}'>Prenota ora</a>\n"
+    if vecchio is not None and nuovo < vecchio:
+        diff = vecchio - nuovo
+        msgs.append(
+            f"📉 <b>Prezzo sceso!</b>\n"
+            f"{label}\n"
+            f"<b>€{nuovo:.0f}</b> (era €{vecchio:.0f}, risparmi €{diff:.0f})\n"
+            f"🔗 <a href='{link}'>Prenota subito</a>\n"
             f"<i>{ora}</i>"
         )
-
-    # Notifica se sotto soglia ottima (max 1 volta per sessione — evita spam)
-    if nuovo_prezzo <= soglia_ottima:
-        messaggi.append(
-            f"🎯 <b>Prezzo ottimo!</b> — {etichetta}\n"
-            f"<b>€{nuovo_prezzo:.0f}</b> (soglia ottima: €{soglia_ottima:.0f})\n"
-            f"🔗 <a href='{url_prenotazione}'>Prenota ora</a>\n"
+    if nuovo <= soglia:
+        msgs.append(
+            f"🎯 <b>Prezzo ottimo raggiunto!</b>\n"
+            f"{label}\n"
+            f"<b>€{nuovo:.0f}</b> ≤ soglia €{soglia:.0f}\n"
+            f"🔗 <a href='{link}'>Prenota subito</a>\n"
             f"<i>{ora}</i>"
         )
+    return msgs
 
-    return messaggi
+# ─── DASHBOARD HTML ─────────────────────────────────────────────────────────────
+
+def genera_dashboard(storico):
+    ora = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+    # Raggruppa dati per tipo e finestra
+    voli = {}; traghetti = {}; alloggi = {}
+    for chiave, valore in storico.items():
+        if not isinstance(valore, list):
+            continue
+        parti = chiave.split("_")
+        tipo = parti[0]
+        date = f"{parti[1]}→{parti[2]}" if len(parti) >= 3 else chiave
+        if tipo == "volo":      voli[date] = valore
+        elif tipo == "traghetto": traghetti[date] = valore
+        elif tipo == "alloggio":  alloggi[date] = valore
+
+    def serie_js(dizionario):
+        """Converte {label: [{"ts":..,"v":..},...]} in lista JS per Chart.js"""
+        datasets = []
+        colori = ["#4F8EF7","#F7874F","#4FF7A0","#F74F8E","#C44FF7"]
+        for i, (label, serie) in enumerate(dizionario.items()):
+            punti = [{"x": p["ts"], "y": p["v"]} for p in serie if p.get("v")]
+            datasets.append({
+                "label": label,
+                "data": punti,
+                "borderColor": colori[i % len(colori)],
+                "backgroundColor": colori[i % len(colori)] + "33",
+                "tension": 0.3,
+                "fill": False,
+            })
+        return json.dumps(datasets)
+
+    html = f"""<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard Prezzi Alghero</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+  :root {{
+    --bg: #0f1117; --card: #1a1d27; --border: #2a2d3a;
+    --text: #e2e8f0; --sub: #8892a4; --green: #4ade80;
+    --blue: #60a5fa; --orange: #fb923c; --red: #f87171;
+    --purple: #c084fc;
+  }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; padding: 1.5rem; }}
+  h1 {{ font-size: 1.4rem; font-weight: 600; margin-bottom: 4px; }}
+  .sub {{ color: var(--sub); font-size: 0.85rem; margin-bottom: 2rem; }}
+  .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 2rem; }}
+  .card {{ background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; }}
+  .card-label {{ font-size: 0.75rem; color: var(--sub); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }}
+  .card-value {{ font-size: 1.8rem; font-weight: 600; }}
+  .card-sub {{ font-size: 0.8rem; color: var(--sub); margin-top: 4px; }}
+  .badge {{ display: inline-block; font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; margin-left: 8px; vertical-align: middle; }}
+  .badge-green {{ background: #166534; color: #4ade80; }}
+  .badge-red {{ background: #7f1d1d; color: #f87171; }}
+  .badge-yellow {{ background: #78350f; color: #fbbf24; }}
+  .chart-wrap {{ background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; margin-bottom: 1.5rem; }}
+  .chart-title {{ font-size: 0.9rem; font-weight: 600; margin-bottom: 1rem; }}
+  .chart-title span {{ color: var(--sub); font-weight: 400; font-size: 0.8rem; margin-left: 8px; }}
+  canvas {{ max-height: 260px; }}
+  .soglia-line {{ font-size: 0.8rem; color: var(--sub); margin-top: 8px; }}
+  .empty {{ color: var(--sub); font-size: 0.85rem; padding: 2rem 0; text-align: center; }}
+  .update {{ color: var(--sub); font-size: 0.75rem; text-align: right; margin-top: 1rem; }}
+  table {{ width: 100%; border-collapse: collapse; font-size: 0.85rem; }}
+  th {{ color: var(--sub); font-weight: 500; text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }}
+  td {{ padding: 8px 8px; border-bottom: 1px solid var(--border); }}
+  tr:last-child td {{ border-bottom: none; }}
+  .up {{ color: var(--red); }} .down {{ color: var(--green); }} .eq {{ color: var(--sub); }}
+</style>
+</head>
+<body>
+
+<h1>📊 Dashboard Prezzi — Roma → Alghero</h1>
+<div class="sub">Ultimo aggiornamento: {ora} · Aggiornamento automatico ogni ora</div>
+
+<div class="grid" id="kpis"></div>
+
+<div class="chart-wrap">
+  <div class="chart-title">✈️ Voli ITA Airways FCO→AHO <span>A/R 2 persone · €</span></div>
+  <canvas id="chartVoli"></canvas>
+  <div class="soglia-line">— soglia ottima: €{SOGLIE_OTTIME['volo']}</div>
+</div>
+
+<div class="chart-wrap">
+  <div class="chart-title">⛴️ Traghetto Grimaldi Civitavecchia→Porto Torres <span>A/R 2 persone · €</span></div>
+  <canvas id="chartTraghetti"></canvas>
+  <div class="soglia-line">— soglia ottima: €{SOGLIE_OTTIME['traghetto']}</div>
+</div>
+
+<div class="chart-wrap">
+  <div class="chart-title">🏠 Appartamenti Alghero (2 camere) <span>€/notte</span></div>
+  <canvas id="chartAlloggi"></canvas>
+  <div class="soglia-line">— soglia ottima: €{SOGLIE_OTTIME['alloggio']}/notte</div>
+</div>
+
+<div class="chart-wrap">
+  <div class="chart-title">📋 Ultimi prezzi rilevati</div>
+  <table id="tabellaUltimi">
+    <thead><tr><th>Categoria</th><th>Date</th><th>Prezzo</th><th>Var.</th></tr></thead>
+    <tbody id="tbodyUltimi"></tbody>
+  </table>
+</div>
+
+<div class="update">Dati raccolti automaticamente da GitHub Actions · aggiornamento ogni ora</div>
+
+<script>
+const storico = {json.dumps(storico, ensure_ascii=False)};
+const SOGLIE = {json.dumps(SOGLIE_OTTIME)};
+
+// ── Prepara dataset per tipo ──
+function buildDatasets(tipo, campo) {{
+  const colori = ["#4F8EF7","#fb923c","#4ade80","#c084fc","#f87171"];
+  const ds = [];
+  let i = 0;
+  for (const [chiave, serie] of Object.entries(storico)) {{
+    if (!chiave.startsWith(tipo)) continue;
+    const label = chiave.replace(tipo+'_','').replace('_','→');
+    const punti = (serie||[]).map(p => ({{
+      x: new Date(p.ts),
+      y: typeof p.v === 'object' ? p.v.per_notte : p.v
+    }})).filter(p => p.y);
+    if (!punti.length) {{ i++; continue; }}
+    ds.push({{
+      label, data: punti,
+      borderColor: colori[i%colori.length],
+      backgroundColor: colori[i%colori.length]+'22',
+      tension: 0.3, fill: false, pointRadius: 4
+    }});
+    i++;
+  }}
+  return ds;
+}}
+
+function sogliAnnotation(valore) {{
+  return {{
+    type: 'line', yMin: valore, yMax: valore,
+    borderColor: '#fbbf24', borderWidth: 1, borderDash: [4,4],
+  }};
+}}
+
+const opzioniBase = (soglia) => ({{
+  responsive: true,
+  plugins: {{ legend: {{ labels: {{ color: '#8892a4', font: {{ size: 11 }} }} }} }},
+  scales: {{
+    x: {{
+      type: 'time',
+      time: {{ unit: 'hour', displayFormats: {{ hour: 'dd/MM HH:mm' }} }},
+      ticks: {{ color: '#8892a4', maxTicksLimit: 8 }},
+      grid: {{ color: '#2a2d3a' }}
+    }},
+    y: {{
+      ticks: {{ color: '#8892a4', callback: v => '€'+v }},
+      grid: {{ color: '#2a2d3a' }}
+    }}
+  }}
+}});
+
+// ── Grafici ──
+['Voli','Traghetti','Alloggi'].forEach(tipo => {{
+  const key = tipo === 'Voli' ? 'volo' : tipo === 'Traghetti' ? 'traghetto' : 'alloggio';
+  const ds = buildDatasets(key);
+  const ctx = document.getElementById('chart'+tipo).getContext('2d');
+  if (!ds.length) {{
+    ctx.canvas.parentElement.insertAdjacentHTML('beforeend',
+      '<div class="empty">Dati in raccolta — torna tra qualche ora</div>');
+    return;
+  }}
+  new Chart(ctx, {{ type: 'line', data: {{ datasets: ds }}, options: opzioniBase(SOGLIE[key]) }});
+}});
+
+// ── KPI Cards ──
+function ultimoValore(tipo) {{
+  let min = null;
+  for (const [k,v] of Object.entries(storico)) {{
+    if (!k.startsWith(tipo)||!v||!v.length) continue;
+    const last = v[v.length-1];
+    const val = typeof last.v === 'object' ? last.v.per_notte : last.v;
+    if (val && (min === null || val < min)) min = val;
+  }}
+  return min;
+}}
+
+function trend(tipo) {{
+  for (const [k,v] of Object.entries(storico)) {{
+    if (!k.startsWith(tipo)||!v||v.length<2) continue;
+    const a = typeof v[v.length-2].v==='object'?v[v.length-2].v.per_notte:v[v.length-2].v;
+    const b = typeof v[v.length-1].v==='object'?v[v.length-1].v.per_notte:v[v.length-1].v;
+    if (a&&b) return b<a?'↓':b>a?'↑':'→';
+  }}
+  return '–';
+}}
+
+const kpiData = [
+  {{ label:'Volo minimo (A/R 2 pers)', tipo:'volo', soglia: SOGLIE.volo, unita:'€', extra:'' }},
+  {{ label:'Traghetto minimo (A/R 2 pers)', tipo:'traghetto', soglia: SOGLIE.traghetto, unita:'€', extra:'' }},
+  {{ label:'Alloggio minimo', tipo:'alloggio', soglia: SOGLIE.alloggio, unita:'€', extra:'/notte' }},
+];
+
+const kpiDiv = document.getElementById('kpis');
+kpiData.forEach(k => {{
+  const v = ultimoValore(k.tipo);
+  const t = trend(k.tipo);
+  const tClass = t==='↓'?'down':t==='↑'?'up':'eq';
+  const badgeClass = v&&v<=k.soglia?'badge-green':'badge-yellow';
+  const badgeTxt = v&&v<=k.soglia?'ottimo':'in monitoraggio';
+  kpiDiv.innerHTML += `
+    <div class="card">
+      <div class="card-label">${{k.label}}</div>
+      <div class="card-value">
+        ${{v ? k.unita+Math.round(v)+k.extra : '–'}}
+        <span class="badge ${{badgeClass}}">${{badgeTxt}}</span>
+      </div>
+      <div class="card-sub">
+        Trend: <span class="${{tClass}}">${{t}}</span> &nbsp;·&nbsp; Soglia ottima: ${{k.unita}}${{k.soglia}}${{k.extra}}
+      </div>
+    </div>`;
+}});
+
+// ── Tabella ultimi valori ──
+const tbody = document.getElementById('tbodyUltimi');
+const emoji = {{volo:'✈️', traghetto:'⛴️', alloggio:'🏠'}};
+for (const [chiave, serie] of Object.entries(storico)) {{
+  if (!serie||!serie.length) continue;
+  const tipo = chiave.split('_')[0];
+  const date = chiave.replace(tipo+'_','').replace('_','→');
+  const last = serie[serie.length-1];
+  const prev = serie.length>1 ? serie[serie.length-2] : null;
+  const val = typeof last.v==='object'?last.v.per_notte:last.v;
+  const valPrev = prev ? (typeof prev.v==='object'?prev.v.per_notte:prev.v) : null;
+  if (!val) continue;
+  const diff = valPrev ? Math.round(val-valPrev) : 0;
+  const diffTxt = diff===0?'–':diff<0?`<span class="down">▼ €${{Math.abs(diff)}}</span>`:`<span class="up">▲ €${{diff}}</span>`;
+  tbody.innerHTML += `<tr>
+    <td>${{emoji[tipo]||''}} ${{tipo}}</td>
+    <td>${{date}}</td>
+    <td><b>€${{Math.round(val)}}</b></td>
+    <td>${{diffTxt}}</td>
+  </tr>`;
+}}
+if (!tbody.innerHTML) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--sub);padding:2rem">Dati in raccolta — torna tra qualche ora</td></tr>';
+</script>
+</body>
+</html>"""
+    FILE_DASHBOARD.parent.mkdir(exist_ok=True)
+    FILE_DASHBOARD.write_text(html)
+    print(f"[DASHBOARD] generata → docs/index.html")
 
 # ─── MAIN ──────────────────────────────────────────────────────────────────────
 
 def main():
     print(f"\n{'='*50}")
-    print(f"Bot Alghero avviato: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-    print(f"{'='*50}\n")
+    print(f"Bot Alghero v2 · {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    print(f"{'='*50}")
 
-    prezzi_precedenti = carica_prezzi_precedenti()
-    prezzi_nuovi = {}
-    tutti_messaggi = []
+    storico = carica_storico()
+    ora_iso = datetime.now().isoformat()
+    notifiche = []
 
     for (data_andata, data_ritorno) in DATE_FINESTRE:
-        notti = (datetime.strptime(data_ritorno, "%Y-%m-%d") - datetime.strptime(data_andata, "%Y-%m-%d")).days
-        etichetta_date = f"{data_andata} → {data_ritorno} ({notti} notti)"
-        print(f"\n--- Finestra: {etichetta_date} ---")
+        notti = (datetime.strptime(data_ritorno,"%Y-%m-%d") -
+                 datetime.strptime(data_andata,"%Y-%m-%d")).days
+        label_date = f"{data_andata}→{data_ritorno} ({notti}n)"
+        print(f"\n▸ {label_date}")
 
-        # Chiavi univoche per ogni finestra
-        chiave_volo = f"volo_{data_andata}_{data_ritorno}"
-        chiave_traghetto = f"traghetto_{data_andata}_{data_ritorno}"
-        chiave_alloggio = f"alloggio_{data_andata}_{data_ritorno}"
+        chiavi = {
+            "volo":      f"volo_{data_andata}_{data_ritorno}",
+            "traghetto": f"traghetto_{data_andata}_{data_ritorno}",
+            "alloggio":  f"alloggio_{data_andata}_{data_ritorno}",
+        }
 
-        # ── VOLO ──
-        prezzo_volo = cerca_voli(data_andata, data_ritorno)
+        # ── Volo ──
+        pv = cerca_volo_ita(data_andata, data_ritorno)
         pausa()
-        if prezzo_volo:
-            prezzi_nuovi[chiave_volo] = prezzo_volo
-            vecchio = prezzi_precedenti.get(chiave_volo)
-            msgs = controlla_e_notifica(
-                chiave_volo,
-                prezzo_volo,
-                vecchio,
-                SOGLIE_OTTIME["volo_ita_ar_2persone"],
-                f"Volo ITA A/R 2 pers — {etichetta_date}",
+        if pv:
+            serie = storico.setdefault(chiavi["volo"], [])
+            vecchio = serie[-1]["v"] if serie else None
+            serie.append({"ts": ora_iso, "v": pv})
+            notifiche += controlla_notifiche(
+                chiavi["volo"], pv, vecchio, SOGLIE_OTTIME["volo"],
+                f"✈️ Volo A/R 2 pers · {label_date}",
                 "https://www.ita-airways.com/it_it/voli-offerte/offerte-voli.html"
             )
-            tutti_messaggi.extend(msgs)
 
-        # ── TRAGHETTO ──
-        prezzo_traghetto = cerca_traghetto(data_andata, data_ritorno)
+        # ── Traghetto ──
+        pt = cerca_traghetto(data_andata, data_ritorno)
         pausa()
-        if prezzo_traghetto:
-            prezzi_nuovi[chiave_traghetto] = prezzo_traghetto
-            vecchio = prezzi_precedenti.get(chiave_traghetto)
-            msgs = controlla_e_notifica(
-                chiave_traghetto,
-                prezzo_traghetto,
-                vecchio,
-                SOGLIE_OTTIME["traghetto_ar_2persone"],
-                f"Traghetto Grimaldi A/R 2 pers — {etichetta_date}",
+        if pt:
+            serie = storico.setdefault(chiavi["traghetto"], [])
+            vecchio = serie[-1]["v"] if serie else None
+            serie.append({"ts": ora_iso, "v": pt})
+            notifiche += controlla_notifiche(
+                chiavi["traghetto"], pt, vecchio, SOGLIE_OTTIME["traghetto"],
+                f"⛴️ Traghetto A/R 2 pers · {label_date}",
                 "https://www.grimaldi-lines.com/it/prenota/"
             )
-            tutti_messaggi.extend(msgs)
 
-        # ── ALLOGGIO ──
-        risultato_alloggio = cerca_alloggio(data_andata, data_ritorno)
+        # ── Alloggio ──
+        pa = cerca_alloggio(data_andata, data_ritorno)
         pausa()
-        if risultato_alloggio:
-            per_notte = risultato_alloggio["per_notte"]
-            totale = risultato_alloggio["totale"]
-            prezzi_nuovi[chiave_alloggio] = per_notte
-            vecchio = prezzi_precedenti.get(chiave_alloggio)
-            msgs = controlla_e_notifica(
-                chiave_alloggio,
-                per_notte,
-                vecchio,
-                SOGLIE_OTTIME["alloggio_notte"],
-                f"Alloggio Alghero {notti} notti (€{totale:.0f} tot) — {etichetta_date}",
-                f"https://www.booking.com/searchresults.it.html?ss=Alghero&checkin={data_andata}&checkout={data_ritorno}&group_adults=2&nflt=entire_place%3D1&order=price"
+        if pa:
+            serie = storico.setdefault(chiavi["alloggio"], [])
+            vecchio = serie[-1]["v"]["per_notte"] if serie and isinstance(serie[-1]["v"], dict) else (serie[-1]["v"] if serie else None)
+            serie.append({"ts": ora_iso, "v": pa})
+            notifiche += controlla_notifiche(
+                chiavi["alloggio"], pa["per_notte"], vecchio, SOGLIE_OTTIME["alloggio"],
+                f"🏠 Alloggio €/notte · {label_date}",
+                f"https://www.airbnb.it/s/Alghero/homes?checkin={data_andata}&checkout={data_ritorno}&adults=2&min_bedrooms=2"
             )
-            tutti_messaggi.extend(msgs)
 
-    # Invia tutte le notifiche
-    if tutti_messaggi:
-        print(f"\n[NOTIFICHE] Invio {len(tutti_messaggi)} messaggi Telegram...")
-        for msg in tutti_messaggi:
-            invia_telegram(msg)
+    # ── Notifiche Telegram ──
+    if notifiche:
+        print(f"\n[TG] Invio {len(notifiche)} notifiche...")
+        for msg in notifiche:
+            telegram(msg)
             time.sleep(1)
     else:
-        print("\n[INFO] Nessuna variazione di prezzo rilevante. Nessuna notifica inviata.")
+        print("\n[INFO] Nessuna variazione significativa.")
 
-    # Riepilogo giornaliero (ogni check salva i dati, ma il riepilogo lo mandiamo solo a mezzogiorno)
-    ora_corrente = datetime.now().hour
-    if ora_corrente == 9:  # Riepilogo mattutino alle 9
-        invia_riepilogo(prezzi_nuovi)
+    # ── Riepilogo giornaliero alle 9:00 ──
+    if datetime.now().hour == 9:
+        righe = [f"📊 <b>Riepilogo mattutino</b> · {datetime.now().strftime('%d/%m %H:%M')}\n"]
+        for tipo, emoji in [("volo","✈️"),("traghetto","⛴️"),("alloggio","🏠")]:
+            for chiave, serie in storico.items():
+                if not chiave.startswith(tipo) or not serie: continue
+                last = serie[-1]["v"]
+                val = last["per_notte"] if isinstance(last, dict) else last
+                if val:
+                    date = chiave.replace(f"{tipo}_","").replace("_","→")
+                    righe.append(f"{emoji} {date}: <b>€{val:.0f}</b>")
+        telegram("\n".join(righe))
 
-    # Salva i nuovi prezzi
-    prezzi_precedenti.update(prezzi_nuovi)
-    salva_prezzi(prezzi_precedenti)
-    print(f"\n[OK] Prezzi salvati in {FILE_PREZZI}")
-
-def invia_riepilogo(prezzi):
-    ora = datetime.now().strftime("%d/%m %H:%M")
-    righe = [f"📊 <b>Riepilogo prezzi Alghero</b> — {ora}\n"]
-
-    for chiave, valore in sorted(prezzi.items()):
-        tipo = chiave.split("_")[0]
-        parti = chiave.split("_")
-        date = f"{parti[1]} → {parti[2]}" if len(parti) >= 3 else ""
-        emoji = {"volo": "✈️", "traghetto": "⛴️", "alloggio": "🏠"}.get(tipo, "•")
-        righe.append(f"{emoji} <b>{tipo.capitalize()}</b> {date}: <b>€{valore:.0f}</b>")
-
-    invia_telegram("\n".join(righe))
+    # ── Salva storico e genera dashboard ──
+    salva_storico(storico)
+    genera_dashboard(storico)
+    print(f"\n✓ Done · {datetime.now().strftime('%H:%M:%S')}")
 
 if __name__ == "__main__":
     main()
