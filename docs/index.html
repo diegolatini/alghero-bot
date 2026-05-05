@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard Prezzi Alghero</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117; --card: #1a1d27; --border: #2a2d3a;
+    --text: #e2e8f0; --sub: #8892a4; --green: #4ade80;
+    --blue: #60a5fa; --orange: #fb923c; --red: #f87171;
+    --purple: #c084fc;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; padding: 1.5rem; }
+  h1 { font-size: 1.4rem; font-weight: 600; margin-bottom: 4px; }
+  .sub { color: var(--sub); font-size: 0.85rem; margin-bottom: 2rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; }
+  .card-label { font-size: 0.75rem; color: var(--sub); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+  .card-value { font-size: 1.8rem; font-weight: 600; }
+  .card-sub { font-size: 0.8rem; color: var(--sub); margin-top: 4px; }
+  .badge { display: inline-block; font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; margin-left: 8px; vertical-align: middle; }
+  .badge-green { background: #166534; color: #4ade80; }
+  .badge-red { background: #7f1d1d; color: #f87171; }
+  .badge-yellow { background: #78350f; color: #fbbf24; }
+  .chart-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; margin-bottom: 1.5rem; }
+  .chart-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 1rem; }
+  .chart-title span { color: var(--sub); font-weight: 400; font-size: 0.8rem; margin-left: 8px; }
+  canvas { max-height: 260px; }
+  .soglia-line { font-size: 0.8rem; color: var(--sub); margin-top: 8px; }
+  .empty { color: var(--sub); font-size: 0.85rem; padding: 2rem 0; text-align: center; }
+  .update { color: var(--sub); font-size: 0.75rem; text-align: right; margin-top: 1rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th { color: var(--sub); font-weight: 500; text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  td { padding: 8px 8px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  .up { color: var(--red); } .down { color: var(--green); } .eq { color: var(--sub); }
+</style>
+</head>
+<body>
+
+<h1>📊 Dashboard Prezzi — Roma → Alghero</h1>
+<div class="sub">Ultimo aggiornamento: 05/05/2026 21:38 · Aggiornamento automatico ogni ora</div>
+
+<div class="grid" id="kpis"></div>
+
+<div class="chart-wrap">
+  <div class="chart-title">✈️ Voli ITA Airways FCO→AHO <span>A/R 2 persone · €</span></div>
+  <canvas id="chartVoli"></canvas>
+  <div class="soglia-line">— soglia ottima: €200</div>
+</div>
+
+<div class="chart-wrap">
+  <div class="chart-title">⛴️ Traghetto Grimaldi Civitavecchia→Porto Torres <span>A/R 2 persone · €</span></div>
+  <canvas id="chartTraghetti"></canvas>
+  <div class="soglia-line">— soglia ottima: €220</div>
+</div>
+
+<div class="chart-wrap">
+  <div class="chart-title">🏠 Appartamenti Alghero (2 camere) <span>€/notte</span></div>
+  <canvas id="chartAlloggi"></canvas>
+  <div class="soglia-line">— soglia ottima: €80/notte</div>
+</div>
+
+<div class="chart-wrap">
+  <div class="chart-title">📋 Ultimi prezzi rilevati</div>
+  <table id="tabellaUltimi">
+    <thead><tr><th>Categoria</th><th>Date</th><th>Prezzo</th><th>Var.</th></tr></thead>
+    <tbody id="tbodyUltimi"></tbody>
+  </table>
+</div>
+
+<div class="update">Dati raccolti automaticamente da GitHub Actions · aggiornamento ogni ora</div>
+
+<script>
+const storico = {};
+const SOGLIE = {"volo": 200, "traghetto": 220, "alloggio": 80};
+
+// ── Prepara dataset per tipo ──
+function buildDatasets(tipo, campo) {
+  const colori = ["#4F8EF7","#fb923c","#4ade80","#c084fc","#f87171"];
+  const ds = [];
+  let i = 0;
+  for (const [chiave, serie] of Object.entries(storico)) {
+    if (!chiave.startsWith(tipo)) continue;
+    const label = chiave.replace(tipo+'_','').replace('_','→');
+    const punti = (serie||[]).map(p => ({
+      x: new Date(p.ts),
+      y: typeof p.v === 'object' ? p.v.per_notte : p.v
+    })).filter(p => p.y);
+    if (!punti.length) { i++; continue; }
+    ds.push({
+      label, data: punti,
+      borderColor: colori[i%colori.length],
+      backgroundColor: colori[i%colori.length]+'22',
+      tension: 0.3, fill: false, pointRadius: 4
+    });
+    i++;
+  }
+  return ds;
+}
+
+function sogliAnnotation(valore) {
+  return {
+    type: 'line', yMin: valore, yMax: valore,
+    borderColor: '#fbbf24', borderWidth: 1, borderDash: [4,4],
+  };
+}
+
+const opzioniBase = (soglia) => ({
+  responsive: true,
+  plugins: { legend: { labels: { color: '#8892a4', font: { size: 11 } } } },
+  scales: {
+    x: {
+      type: 'time',
+      time: { unit: 'hour', displayFormats: { hour: 'dd/MM HH:mm' } },
+      ticks: { color: '#8892a4', maxTicksLimit: 8 },
+      grid: { color: '#2a2d3a' }
+    },
+    y: {
+      ticks: { color: '#8892a4', callback: v => '€'+v },
+      grid: { color: '#2a2d3a' }
+    }
+  }
+});
+
+// ── Grafici ──
+['Voli','Traghetti','Alloggi'].forEach(tipo => {
+  const key = tipo === 'Voli' ? 'volo' : tipo === 'Traghetti' ? 'traghetto' : 'alloggio';
+  const ds = buildDatasets(key);
+  const ctx = document.getElementById('chart'+tipo).getContext('2d');
+  if (!ds.length) {
+    ctx.canvas.parentElement.insertAdjacentHTML('beforeend',
+      '<div class="empty">Dati in raccolta — torna tra qualche ora</div>');
+    return;
+  }
+  new Chart(ctx, { type: 'line', data: { datasets: ds }, options: opzioniBase(SOGLIE[key]) });
+});
+
+// ── KPI Cards ──
+function ultimoValore(tipo) {
+  let min = null;
+  for (const [k,v] of Object.entries(storico)) {
+    if (!k.startsWith(tipo)||!v||!v.length) continue;
+    const last = v[v.length-1];
+    const val = typeof last.v === 'object' ? last.v.per_notte : last.v;
+    if (val && (min === null || val < min)) min = val;
+  }
+  return min;
+}
+
+function trend(tipo) {
+  for (const [k,v] of Object.entries(storico)) {
+    if (!k.startsWith(tipo)||!v||v.length<2) continue;
+    const a = typeof v[v.length-2].v==='object'?v[v.length-2].v.per_notte:v[v.length-2].v;
+    const b = typeof v[v.length-1].v==='object'?v[v.length-1].v.per_notte:v[v.length-1].v;
+    if (a&&b) return b<a?'↓':b>a?'↑':'→';
+  }
+  return '–';
+}
+
+const kpiData = [
+  { label:'Volo minimo (A/R 2 pers)', tipo:'volo', soglia: SOGLIE.volo, unita:'€', extra:'' },
+  { label:'Traghetto minimo (A/R 2 pers)', tipo:'traghetto', soglia: SOGLIE.traghetto, unita:'€', extra:'' },
+  { label:'Alloggio minimo', tipo:'alloggio', soglia: SOGLIE.alloggio, unita:'€', extra:'/notte' },
+];
+
+const kpiDiv = document.getElementById('kpis');
+kpiData.forEach(k => {
+  const v = ultimoValore(k.tipo);
+  const t = trend(k.tipo);
+  const tClass = t==='↓'?'down':t==='↑'?'up':'eq';
+  const badgeClass = v&&v<=k.soglia?'badge-green':'badge-yellow';
+  const badgeTxt = v&&v<=k.soglia?'ottimo':'in monitoraggio';
+  kpiDiv.innerHTML += `
+    <div class="card">
+      <div class="card-label">${k.label}</div>
+      <div class="card-value">
+        ${v ? k.unita+Math.round(v)+k.extra : '–'}
+        <span class="badge ${badgeClass}">${badgeTxt}</span>
+      </div>
+      <div class="card-sub">
+        Trend: <span class="${tClass}">${t}</span> &nbsp;·&nbsp; Soglia ottima: ${k.unita}${k.soglia}${k.extra}
+      </div>
+    </div>`;
+});
+
+// ── Tabella ultimi valori ──
+const tbody = document.getElementById('tbodyUltimi');
+const emoji = {volo:'✈️', traghetto:'⛴️', alloggio:'🏠'};
+for (const [chiave, serie] of Object.entries(storico)) {
+  if (!serie||!serie.length) continue;
+  const tipo = chiave.split('_')[0];
+  const date = chiave.replace(tipo+'_','').replace('_','→');
+  const last = serie[serie.length-1];
+  const prev = serie.length>1 ? serie[serie.length-2] : null;
+  const val = typeof last.v==='object'?last.v.per_notte:last.v;
+  const valPrev = prev ? (typeof prev.v==='object'?prev.v.per_notte:prev.v) : null;
+  if (!val) continue;
+  const diff = valPrev ? Math.round(val-valPrev) : 0;
+  const diffTxt = diff===0?'–':diff<0?`<span class="down">▼ €${Math.abs(diff)}</span>`:`<span class="up">▲ €${diff}</span>`;
+  tbody.innerHTML += `<tr>
+    <td>${emoji[tipo]||''} ${tipo}</td>
+    <td>${date}</td>
+    <td><b>€${Math.round(val)}</b></td>
+    <td>${diffTxt}</td>
+  </tr>`;
+}
+if (!tbody.innerHTML) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--sub);padding:2rem">Dati in raccolta — torna tra qualche ora</td></tr>';
+</script>
+</body>
+</html>
