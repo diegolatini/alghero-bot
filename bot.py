@@ -82,84 +82,112 @@ def telegram(msg):
     except Exception as e:
         print(f"  [TG] ✗ errore: {e}")
 
+# ─── PLAYWRIGHT BROWSER ────────────────────────────────────────────────────────
+
+def browser_get(url, wait_selector=None, timeout=30000):
+    """Apre una pagina con Playwright (browser reale) e restituisce l'HTML."""
+    from playwright.sync_api import sync_playwright
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"]
+            )
+            ctx = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                locale="it-IT",
+                viewport={"width": 1280, "height": 800},
+                extra_http_headers={"Accept-Language": "it-IT,it;q=0.9"}
+            )
+            page = ctx.new_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+            if wait_selector:
+                try:
+                    page.wait_for_selector(wait_selector, timeout=10000)
+                except:
+                    pass
+            time.sleep(random.uniform(3, 5))
+            html = page.content()
+            browser.close()
+            return html
+    except Exception as e:
+        print(f"  [BROWSER] errore: {e}")
+        return ""
+
 # ─── SCRAPER VOLI ───────────────────────────────────────────────────────────────
 
 def cerca_volo_ita(data_andata, data_ritorno):
-    """Cerca voli tramite Google Flights (via SerpApi-like URL) e Momondo."""
+    """Cerca voli FCO→AHO A/R per 2 persone con Playwright."""
 
-    # Tentativo 1: Momondo (meno protetto di Kayak/Skyscanner)
+    # Tentativo 1: Kayak con browser reale
     try:
-        da_fmt = datetime.strptime(data_andata, "%Y-%m-%d").strftime("%Y-%m-%d")
-        ar_fmt = datetime.strptime(data_ritorno, "%Y-%m-%d").strftime("%Y-%m-%d")
         url = (
-            f"https://www.momondo.it/flight-search/FCO-AHO"
-            f"/{da_fmt}/{ar_fmt}/2adults?sort=price_a"
+            f"https://www.kayak.it/flights/FCO-AHO"
+            f"/{data_andata}/{data_ritorno}/2adults?sort=price_a"
         )
-        r = SESSIONE.get(url, headers=hdrs("https://www.momondo.it"), timeout=20)
-        soup = BeautifulSoup(r.text, "html.parser")
-
-        # Cerca prezzi nel JSON embedded
-        for script in soup.find_all("script"):
-            txt = script.string or ""
-            if '"price"' in txt and "FCO" in txt:
-                matches = re.findall(r'"price"\s*:\s*(\d+)', txt)
-                valori = [int(m) for m in matches if 50 < int(m) < 3000]
-                if valori:
-                    minimo = min(valori) * 2  # sola andata x2
-                    print(f"  [VOLO MOMONDO] trovato €{minimo:.0f} (2 pers A/R)")
-                    return float(minimo)
-
-        # Fallback testo
-        testo = soup.get_text()
-        prezzi = re.findall(r'(\d{2,4})\s*€', testo)
-        valori = [int(p) for p in prezzi if 40 < int(p) < 2000]
-        if valori:
-            minimo = min(valori) * 2
-            print(f"  [VOLO MOMONDO txt] trovato €{minimo:.0f}")
-            return float(minimo)
+        html = browser_get(url, wait_selector="[class*='price']")
+        if html:
+            soup = BeautifulSoup(html, "html.parser")
+            prezzi = []
+            # Kayak mostra prezzi in elementi con attributi specifici
+            for el in soup.find_all(attrs={"class": re.compile(r'price|Price', re.I)}):
+                testo = el.get_text(strip=True)
+                v = estrai_primo_numero(testo.replace('.',''))
+                if v and 80 < v < 5000:
+                    prezzi.append(v)
+            if prezzi:
+                minimo = min(prezzi)
+                print(f"  [VOLO KAYAK] trovato €{minimo:.0f} (2 pers A/R)")
+                return float(minimo)
     except Exception as e:
-        print(f"  [VOLO MOMONDO] errore: {e}")
+        print(f"  [VOLO KAYAK] errore: {e}")
 
-    # Tentativo 2: Volagratis (sito italiano, meno aggressivo)
+    # Tentativo 2: Skyscanner con browser reale
     try:
-        pausa(2, 4)
+        pausa(3, 5)
         url2 = (
-            f"https://www.volagratis.com/voli/a/FCO/AHO/"
-            f"?departureDate={data_andata}&returnDate={data_ritorno}&adults=2"
+            f"https://www.skyscanner.it/trasporti/voli/fco/aho"
+            f"/{data_andata.replace('-','')}/{data_ritorno.replace('-','')}/?adults=2"
         )
-        r2 = SESSIONE.get(url2, headers=hdrs("https://www.volagratis.com"), timeout=20)
-        testo2 = r2.text
-        prezzi2 = re.findall(r'€\s*(\d{2,4})', testo2)
-        valori2 = [int(p) for p in prezzi2 if 40 < int(p) < 3000]
-        if valori2:
-            minimo2 = min(valori2)
-            # Se prezzo totale già per 2 persone, altrimenti moltiplica
-            if minimo2 > 150:
-                print(f"  [VOLO VOLAGRATIS] trovato €{minimo2:.0f} (totale 2 pers)")
+        html2 = browser_get(url2, wait_selector="[class*='Price']")
+        if html2:
+            soup2 = BeautifulSoup(html2, "html.parser")
+            prezzi2 = []
+            for el in soup2.find_all(class_=re.compile(r'BpkText|price|Price')):
+                testo = el.get_text(strip=True).replace('.','').replace(',','')
+                v = estrai_primo_numero(testo)
+                if v and 80 < v < 5000:
+                    prezzi2.append(v)
+            if prezzi2:
+                minimo2 = min(prezzi2)
+                print(f"  [VOLO SKY] trovato €{minimo2:.0f} (2 pers A/R)")
                 return float(minimo2)
-            else:
-                totale = minimo2 * 2 * 2  # pp × andata+ritorno
-                print(f"  [VOLO VOLAGRATIS] trovato €{totale:.0f} (stima 2 pers A/R)")
-                return float(totale)
     except Exception as e:
-        print(f"  [VOLO VOLAGRATIS] errore: {e}")
+        print(f"  [VOLO SKY] errore: {e}")
 
-    # Tentativo 3: lastminute.com voli
+    # Tentativo 3: Volagratis (sito italiano)
     try:
         pausa(2, 4)
         url3 = (
-            f"https://www.lastminute.com/voli/roma-fiumicino_alghero.html"
+            f"https://www.volagratis.com/voli/a/FCO/AHO/"
             f"?departureDate={data_andata}&returnDate={data_ritorno}&adults=2"
         )
-        r3 = SESSIONE.get(url3, headers=hdrs("https://www.lastminute.com"), timeout=20)
+        r3 = SESSIONE.get(url3, headers=hdrs(), timeout=20)
         soup3 = BeautifulSoup(r3.text, "html.parser")
-        for el in soup3.find_all(class_=re.compile(r'price|prezzo', re.I)):
-            v = estrai_primo_numero(el.get_text())
-            if v and 80 < v < 3000:
-                print(f"  [VOLO LM] trovato €{v:.0f}")
-                return v
+        prezzi3 = []
+        for el in soup3.find_all(class_=re.compile(r'price|prezzo|costo', re.I)):
+            v = estrai_primo_numero(el.get_text().replace('.',''))
+            if v and 80 < v < 5000:
+                prezzi3.append(v)
+        if not prezzi3:
+            matches = re.findall(r'€\s*(\d{2,4})', r3.text)
+            prezzi3 = [int(m) for m in matches if 80 < int(m) < 5000]
+        if prezzi3:
+            minimo3 = min(prezzi3)
+            print(f"  [VOLO VOLAGRATIS] trovato €{minimo3:.0f}")
+            return float(minimo3)
     except Exception as e:
-        print(f"  [VOLO LM] errore: {e}")
+        print(f"  [VOLO VOLAGRATIS] errore: {e}")
 
     print(f"  [VOLO] nessun prezzo trovato")
     return None
@@ -167,78 +195,68 @@ def cerca_volo_ita(data_andata, data_ritorno):
 # ─── SCRAPER TRAGHETTI ──────────────────────────────────────────────────────────
 
 def cerca_traghetto(data_andata, data_ritorno):
-    """Cerca traghetto Civitavecchia→Porto Torres su più fonti."""
+    """Cerca traghetto Civitavecchia→Porto Torres con browser reale."""
 
-    # Tentativo 1: Traghetti.com (API pubblica con parametri GET)
+    # Tentativo 1: Traghetti.com con Playwright
     try:
-        da_obj = datetime.strptime(data_andata, "%Y-%m-%d")
-        ar_obj = datetime.strptime(data_ritorno, "%Y-%m-%d")
+        da_fmt = datetime.strptime(data_andata, "%Y-%m-%d").strftime("%d-%m-%Y")
+        ar_fmt = datetime.strptime(data_ritorno, "%Y-%m-%d").strftime("%d-%m-%Y")
         url = (
-            f"https://www.traghetti.com/en/search"
-            f"?from=Civitavecchia&to=Porto+Torres"
-            f"&outward_date={da_obj.strftime('%d-%m-%Y')}"
-            f"&return_date={ar_obj.strftime('%d-%m-%Y')}"
-            f"&adults=2&children=0&infants=0"
+            f"https://www.traghetti.com/it/biglietti-traghetto"
+            f"?departure=Civitavecchia&arrival=Porto+Torres"
+            f"&outward_date={da_fmt}&return_date={ar_fmt}&adults=2"
         )
-        r = SESSIONE.get(url, headers=hdrs("https://www.traghetti.com"), timeout=20)
-        soup = BeautifulSoup(r.text, "html.parser")
-
-        prezzi = []
-        for el in soup.find_all(class_=re.compile(r'price|prezzo|fare|amount', re.I)):
-            v = estrai_primo_numero(el.get_text())
-            if v and 15 < v < 600:
-                prezzi.append(v)
-
-        if not prezzi:
-            testo = soup.get_text()
-            matches = re.findall(r'€\s*(\d{2,3}(?:[.,]\d{2})?)', testo)
-            prezzi = [float(m.replace(',','.')) for m in matches if 15 < float(m.replace(',','.')) < 600]
-
-        if prezzi:
-            minimo_pp = min(prezzi)
-            totale = round(minimo_pp * 4, 0)  # 2 pers × A/R
-            print(f"  [TRAGHETTO traghetti.com] €{minimo_pp:.0f}/pp → €{totale:.0f} (2 pers A/R)")
-            return float(totale)
+        html = browser_get(url, wait_selector="[class*='price']")
+        if html:
+            soup = BeautifulSoup(html, "html.parser")
+            prezzi = []
+            for el in soup.find_all(class_=re.compile(r'price|prezzo|fare|tariff|amount', re.I)):
+                v = estrai_primo_numero(el.get_text())
+                if v and 15 < v < 600:
+                    prezzi.append(v)
+            if not prezzi:
+                matches = re.findall(r'€\s*(\d{2,3})', html)
+                prezzi = [int(m) for m in matches if 15 < int(m) < 600]
+            if prezzi:
+                minimo = min(prezzi)
+                totale = round(minimo * 4, 0)  # 2 pers × A/R
+                print(f"  [TRAGHETTO traghetti.com] €{minimo:.0f}/pp → €{totale:.0f} (2 pers A/R)")
+                return float(totale)
     except Exception as e:
         print(f"  [TRAGHETTO traghetti.com] errore: {e}")
 
-    # Tentativo 2: Directferries con SSL disabilitato
+    # Tentativo 2: DirectFerries con browser
     try:
         pausa(2, 4)
-        da_fmt = datetime.strptime(data_andata, "%Y-%m-%d").strftime("%d-%m-%Y")
-        ar_fmt = datetime.strptime(data_ritorno, "%Y-%m-%d").strftime("%d-%m-%Y")
+        da_fmt2 = datetime.strptime(data_andata, "%Y-%m-%d").strftime("%d-%m-%Y")
+        ar_fmt2 = datetime.strptime(data_ritorno, "%Y-%m-%d").strftime("%d-%m-%Y")
         url2 = (
             f"https://www.directferries.it/book_ferry.htm"
             f"?operator=0&depart=Civitavecchia&arrive=Porto+Torres"
-            f"&depart_date={da_fmt}&return_date={ar_fmt}&adults=2&children=0&return=1"
+            f"&depart_date={da_fmt2}&return_date={ar_fmt2}&adults=2&children=0&return=1"
         )
-        r2 = SESSIONE.get(url2, headers=hdrs(), timeout=20, verify=False)
-        soup2 = BeautifulSoup(r2.text, "html.parser")
-        prezzi2 = []
-        for el in soup2.find_all(string=re.compile(r'€\d+')):
-            v = estrai_primo_numero(el)
-            if v and 15 < v < 600:
-                prezzi2.append(v)
-        if prezzi2:
-            minimo2 = min(prezzi2)
-            totale2 = round(minimo2 * 2, 0)
-            print(f"  [TRAGHETTO directferries] €{minimo2:.0f} → €{totale2:.0f} (2 pers A/R)")
-            return float(totale2)
+        html2 = browser_get(url2, wait_selector="[class*='price']")
+        if html2:
+            matches2 = re.findall(r'€\s*(\d{2,3}(?:[.,]\d{2})?)', html2)
+            valori2 = [float(m.replace(',','.')) for m in matches2 if 15 < float(m.replace(',','.')) < 600]
+            if valori2:
+                minimo2 = min(valori2)
+                totale2 = round(minimo2 * 2, 0)
+                print(f"  [TRAGHETTO directferries] €{minimo2:.0f} → €{totale2:.0f} (2 pers A/R)")
+                return float(totale2)
     except Exception as e:
         print(f"  [TRAGHETTO directferries] errore: {e}")
 
-    # Tentativo 3: Grimaldi con SSL disabilitato
+    # Tentativo 3: Grimaldi pagina tariffe con SSL disabilitato
     try:
         pausa(2, 4)
-        url3 = "https://www.grimaldi-lines.com/it/tariffe/"
-        r3 = SESSIONE.get(url3, headers=hdrs(), timeout=15, verify=False)
-        testo3 = r3.text
-        matches3 = re.findall(r'€\s*(\d{2,3})', testo3)
-        valori3 = [int(m) for m in matches3 if 20 < int(m) < 500]
+        r3 = SESSIONE.get("https://www.grimaldi-lines.com/it/tariffe/", headers=hdrs(), timeout=15, verify=False)
+        matches3 = re.findall(r'€\s*(\d{2,3})', r3.text)
+        valori3 = [int(m) for m in matches3 if 20 < int(m) < 300]
         if valori3:
             minimo3 = min(valori3)
-            totale3 = minimo3 * 4  # 2 pers × A/R
-            print(f"  [TRAGHETTO grimaldi] €{minimo3:.0f}/pp → €{totale3:.0f} (2 pers A/R)")
+            totale3 = minimo3 * 4
+            print(f"  [TRAGHETTO grimaldi tariffe] €{minimo3:.0f}/pp → €{totale3:.0f} (2 pers A/R stima)")
             return float(totale3)
     except Exception as e:
         print(f"  [TRAGHETTO grimaldi] errore: {e}")
@@ -249,119 +267,70 @@ def cerca_traghetto(data_andata, data_ritorno):
 # ─── SCRAPER ALLOGGI ────────────────────────────────────────────────────────────
 
 def cerca_alloggio(data_andata, data_ritorno):
-    """Cerca appartamenti ad Alghero su più fonti."""
+    """Cerca appartamenti 2 camere ad Alghero con browser reale."""
     notti = (datetime.strptime(data_ritorno, "%Y-%m-%d") -
              datetime.strptime(data_andata, "%Y-%m-%d")).days
 
-    # Tentativo 1: Airbnb con headers da app mobile
+    # Tentativo 1: Airbnb con Playwright
     try:
         url = (
-            f"https://www.airbnb.it/s/Alghero--Sardinia--Italy/homes"
+            f"https://www.airbnb.it/s/Alghero--Sardinia/homes"
             f"?checkin={data_andata}&checkout={data_ritorno}"
-            f"&adults=2&min_bedrooms=2"
-            f"&room_types%5B%5D=Entire+home%2Fapt"
-            f"&search_type=filter_change"
+            f"&adults=2&min_bedrooms=2&room_types%5B%5D=Entire+home%2Fapt"
         )
-        hdrs_mobile = {
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
-            "Accept": "text/html,application/xhtml+xml,*/*;q=0.9",
-            "Accept-Language": "it-IT,it;q=0.9",
-        }
-        r = SESSIONE.get(url, headers=hdrs_mobile, timeout=20)
-        soup = BeautifulSoup(r.text, "html.parser")
-
-        # JSON embedded con __NEXT_DATA__
-        script = soup.find("script", id="__NEXT_DATA__")
-        if script and script.string:
-            data = json.loads(script.string)
-            txt = json.dumps(data)
-            # Cerca valori amount in EUR
-            matches = re.findall(r'"amount"\s*:\s*"?(\d+(?:\.\d+)?)"?', txt)
-            valori = [float(m) for m in matches if 30 < float(m) < 8000]
-            if valori:
-                minimo = min(valori)
-                # Determina se è per notte o totale
-                per_notte = minimo if minimo < 500 else round(minimo / notti, 0)
+        html = browser_get(url, wait_selector="[data-testid*='price']")
+        if html:
+            soup = BeautifulSoup(html, "html.parser")
+            prezzi = []
+            # JSON embedded __NEXT_DATA__
+            script = soup.find("script", id="__NEXT_DATA__")
+            if script and script.string:
+                matches = re.findall(r'"amount"\s*:\s*"?(\d+(?:\.\d+)?)"?', script.string)
+                prezzi = [float(m) for m in matches if 30 < float(m) < 8000]
+            if not prezzi:
+                for el in soup.find_all(attrs={"data-testid": re.compile(r'price')}):
+                    v = estrai_primo_numero(el.get_text())
+                    if v and 30 < v < 3000:
+                        prezzi.append(v)
+            if not prezzi:
+                matches2 = re.findall(r'€(\d{2,4})', html)
+                prezzi = [int(m) for m in matches2 if 30 < int(m) < 3000]
+            if prezzi:
+                minimo = min(prezzi)
+                per_notte = minimo if minimo < 600 else round(minimo / notti, 0)
                 totale = per_notte * notti
-                print(f"  [AIRBNB NEXT] €{per_notte:.0f}/notte → €{totale:.0f} totale")
+                print(f"  [AIRBNB] €{per_notte:.0f}/notte → €{totale:.0f} totale")
                 return {"per_notte": per_notte, "totale": totale, "notti": notti}
-
-        # Fallback: cerca pattern prezzo nel testo
-        testo = soup.get_text()
-        matches2 = re.findall(r'(\d{2,4})\s*€\s*notte', testo)
-        if not matches2:
-            matches2 = re.findall(r'€\s*(\d{2,4})', testo)
-        valori2 = [int(p) for p in matches2 if 30 < int(p) < 2000]
-        if valori2:
-            per_notte = float(min(valori2))
-            totale = per_notte * notti
-            print(f"  [AIRBNB txt] €{per_notte:.0f}/notte → €{totale:.0f} totale")
-            return {"per_notte": per_notte, "totale": totale, "notti": notti}
-
     except Exception as e:
         print(f"  [AIRBNB] errore: {e}")
 
-    # Tentativo 2: Booking.com con headers specifici
+    # Tentativo 2: Booking con Playwright
     try:
-        pausa(3, 6)
+        pausa(3, 5)
         url2 = (
             f"https://www.booking.com/searchresults.it.html"
             f"?ss=Alghero&checkin={data_andata}&checkout={data_ritorno}"
-            f"&group_adults=2&no_rooms=1"
-            f"&nflt=entire_place%3D1%3Bmin_bedrooms%3D2"
-            f"&order=price"
+            f"&group_adults=2&no_rooms=1&nflt=entire_place%3D1%3Bmin_bedrooms%3D2&order=price"
         )
-        hdrs_bk = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
-            "Accept": "text/html,*/*;q=0.8",
-            "Accept-Language": "it-IT,it;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Connection": "keep-alive",
-        }
-        r2 = SESSIONE.get(url2, headers=hdrs_bk, timeout=20)
-        soup2 = BeautifulSoup(r2.text, "html.parser")
-
-        prezzi2 = []
-        for el in soup2.find_all(attrs={"data-testid": re.compile(r'price')}):
-            v = estrai_primo_numero(el.get_text())
-            if v and 50 < v < 10000:
-                prezzi2.append(v)
-
-        if not prezzi2:
-            for el in soup2.find_all(class_=re.compile(r'price|prezzo', re.I)):
-                v = estrai_primo_numero(el.get_text())
+        html2 = browser_get(url2, wait_selector="[data-testid='price-and-discounted-price']")
+        if html2:
+            soup2 = BeautifulSoup(html2, "html.parser")
+            prezzi2 = []
+            for el in soup2.find_all(attrs={"data-testid": "price-and-discounted-price"}):
+                v = estrai_primo_numero(el.get_text().replace('.',''))
                 if v and 50 < v < 10000:
                     prezzi2.append(v)
-
-        if prezzi2:
-            minimo2 = min(prezzi2)
-            per_notte2 = minimo2 if minimo2 < 600 else round(minimo2 / notti, 0)
-            totale2 = per_notte2 * notti
-            print(f"  [BOOKING] €{per_notte2:.0f}/notte → €{totale2:.0f} totale")
-            return {"per_notte": per_notte2, "totale": totale2, "notti": notti}
-
+            if not prezzi2:
+                matches2 = re.findall(r'€\s*(\d{2,4})', html2)
+                prezzi2 = [int(m) for m in matches2 if 50 < int(m) < 10000]
+            if prezzi2:
+                minimo2 = min(prezzi2)
+                per_notte2 = minimo2 if minimo2 < 600 else round(minimo2 / notti, 0)
+                totale2 = per_notte2 * notti
+                print(f"  [BOOKING] €{per_notte2:.0f}/notte → €{totale2:.0f} totale")
+                return {"per_notte": per_notte2, "totale": totale2, "notti": notti}
     except Exception as e:
         print(f"  [BOOKING] errore: {e}")
-
-    # Tentativo 3: Holidu (aggregatore, meno protetto)
-    try:
-        pausa(2, 4)
-        url3 = (
-            f"https://www.holidu.it/vacanze-alghero"
-            f"?checkin={data_andata}&checkout={data_ritorno}"
-            f"&adults=2&bedrooms=2"
-        )
-        r3 = SESSIONE.get(url3, headers=hdrs("https://www.holidu.it"), timeout=20)
-        testo3 = r3.text
-        matches3 = re.findall(r'(\d{2,4})\s*€', testo3)
-        valori3 = [int(p) for p in matches3 if 30 < int(p) < 2000]
-        if valori3:
-            per_notte3 = float(min(valori3))
-            totale3 = per_notte3 * notti
-            print(f"  [HOLIDU] €{per_notte3:.0f}/notte → €{totale3:.0f} totale")
-            return {"per_notte": per_notte3, "totale": totale3, "notti": notti}
-    except Exception as e:
-        print(f"  [HOLIDU] errore: {e}")
 
     print(f"  [ALLOGGIO] nessun prezzo trovato")
     return None
