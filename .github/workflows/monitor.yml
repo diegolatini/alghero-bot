@@ -2,11 +2,11 @@ name: Monitor Prezzi Alghero
 
 on:
   schedule:
-    - cron: '0 * * * *'   # ogni ora
-  workflow_dispatch:        # avvio manuale
+    - cron: '0 * * * *'
+  workflow_dispatch:
 
 permissions:
-  contents: write           # serve per fare commit della dashboard
+  contents: write
 
 jobs:
   monitor:
@@ -25,7 +25,7 @@ jobs:
         run: |
           pip install -r requirements.txt
           playwright install chromium
-          playwright install-deps chromium
+          sudo apt-get install -y libasound2t64 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libgbm1 libgtk-3-0 libnspr4 libnss3 libxcomposite1 libxdamage1 libxfixes3 libxkbcommon0 libxrandr2
 
       - name: Ripristina storico prezzi
         uses: actions/cache@v4
