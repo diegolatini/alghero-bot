@@ -645,7 +645,7 @@ def main():
             notifiche += controlla_notifiche(
                 chiavi["volo"], pv, vecchio, SOGLIE_OTTIME["volo"],
                 f"✈️ Volo A/R 2 pers · {label_date}",
-                "https://www.ita-airways.com/it_it/voli-offerte/offerte-voli.html"
+                f"https://www.kayak.it/flights/FCO-AHO/{data_andata}/{data_ritorno}/2adults?sort=price_a"
             )
 
         # ── Traghetto ──
@@ -658,7 +658,7 @@ def main():
             notifiche += controlla_notifiche(
                 chiavi["traghetto"], pt, vecchio, SOGLIE_OTTIME["traghetto"],
                 f"⛴️ Traghetto A/R 2 pers · {label_date}",
-                "https://www.grimaldi-lines.com/it/prenota/"
+                f"https://www.traghetti.com/it/biglietti-traghetto?departure=Civitavecchia&arrival=Porto+Torres&outward_date={data_andata}&return_date={data_ritorno}&adults=2"
             )
 
         # ── Alloggio ──
