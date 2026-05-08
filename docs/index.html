@@ -7,209 +7,138 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <style>
-  :root {
-    --bg: #0f1117; --card: #1a1d27; --border: #2a2d3a;
-    --text: #e2e8f0; --sub: #8892a4; --green: #4ade80;
-    --blue: #60a5fa; --orange: #fb923c; --red: #f87171;
-    --purple: #c084fc;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; padding: 1.5rem; }
-  h1 { font-size: 1.4rem; font-weight: 600; margin-bottom: 4px; }
-  .sub { color: var(--sub); font-size: 0.85rem; margin-bottom: 2rem; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; }
-  .card-label { font-size: 0.75rem; color: var(--sub); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
-  .card-value { font-size: 1.8rem; font-weight: 600; }
-  .card-sub { font-size: 0.8rem; color: var(--sub); margin-top: 4px; }
-  .badge { display: inline-block; font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; margin-left: 8px; vertical-align: middle; }
-  .badge-green { background: #166534; color: #4ade80; }
-  .badge-red { background: #7f1d1d; color: #f87171; }
-  .badge-yellow { background: #78350f; color: #fbbf24; }
-  .chart-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; margin-bottom: 1.5rem; }
-  .chart-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 1rem; }
-  .chart-title span { color: var(--sub); font-weight: 400; font-size: 0.8rem; margin-left: 8px; }
-  canvas { max-height: 260px; }
-  .soglia-line { font-size: 0.8rem; color: var(--sub); margin-top: 8px; }
-  .empty { color: var(--sub); font-size: 0.85rem; padding: 2rem 0; text-align: center; }
-  .update { color: var(--sub); font-size: 0.75rem; text-align: right; margin-top: 1rem; }
-  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-  th { color: var(--sub); font-weight: 500; text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
-  td { padding: 8px 8px; border-bottom: 1px solid var(--border); }
-  tr:last-child td { border-bottom: none; }
-  .up { color: var(--red); } .down { color: var(--green); } .eq { color: var(--sub); }
+  :root { --bg:#0f1117; --card:#1a1d27; --border:#2a2d3a; --text:#e2e8f0; --sub:#8892a4; --green:#4ade80; --blue:#60a5fa; --orange:#fb923c; --red:#f87171; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:-apple-system,sans-serif; padding:1.5rem; }
+  h1 { font-size:1.4rem; font-weight:600; margin-bottom:4px; }
+  .sub { color:var(--sub); font-size:.85rem; margin-bottom:2rem; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1rem; margin-bottom:2rem; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:1.25rem; }
+  .card-label { font-size:.75rem; color:var(--sub); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
+  .card-value { font-size:1.8rem; font-weight:600; }
+  .card-sub { font-size:.8rem; color:var(--sub); margin-top:4px; }
+  .badge { display:inline-block; font-size:.7rem; padding:2px 8px; border-radius:20px; margin-left:8px; vertical-align:middle; }
+  .badge-green { background:#166534; color:#4ade80; }
+  .badge-yellow { background:#78350f; color:#fbbf24; }
+  .chart-wrap { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:1.25rem; margin-bottom:1.5rem; }
+  .chart-title { font-size:.9rem; font-weight:600; margin-bottom:1rem; }
+  .chart-title span { color:var(--sub); font-weight:400; font-size:.8rem; margin-left:8px; }
+  canvas { max-height:260px; }
+  .soglia-line { font-size:.8rem; color:var(--sub); margin-top:8px; }
+  table { width:100%; border-collapse:collapse; font-size:.85rem; }
+  th { color:var(--sub); font-weight:500; text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); }
+  td { padding:8px 8px; border-bottom:1px solid var(--border); }
+  tr:last-child td { border-bottom:none; }
+  .down { color:var(--green); } .up { color:var(--red); }
+  .update { color:var(--sub); font-size:.75rem; text-align:right; margin-top:1rem; }
 </style>
 </head>
 <body>
-
-<h1>📊 Dashboard Prezzi — Roma → Alghero</h1>
-<div class="sub">Ultimo aggiornamento: 08/05/2026 16:09 · Aggiornamento automatico ogni ora</div>
+<h1>📊 Dashboard Prezzi — Alghero 2026</h1>
+<div class="sub">Aggiornamento: 08/05/2026 20:30 · ogni ora automatico · solo ITA Airways (bagaglio incluso)</div>
 
 <div class="grid" id="kpis"></div>
 
 <div class="chart-wrap">
-  <div class="chart-title">✈️ Voli ITA Airways FCO→AHO <span>A/R 2 persone · €</span></div>
+  <div class="chart-title">✈️ Voli ITA Airways → Alghero <span>A/R 2 persone · € · bagaglio incluso</span></div>
   <canvas id="chartVoli"></canvas>
   <div class="soglia-line">— soglia ottima: €200</div>
 </div>
-
 <div class="chart-wrap">
-  <div class="chart-title">⛴️ Traghetto Grimaldi Civitavecchia→Porto Torres <span>A/R 2 persone · €</span></div>
+  <div class="chart-title">⛴️ Traghetto Civitavecchia→Porto Torres <span>A/R 2 persone · €</span></div>
   <canvas id="chartTraghetti"></canvas>
   <div class="soglia-line">— soglia ottima: €220</div>
 </div>
-
 <div class="chart-wrap">
   <div class="chart-title">🏠 Appartamenti Alghero (2 camere) <span>€/notte</span></div>
   <canvas id="chartAlloggi"></canvas>
   <div class="soglia-line">— soglia ottima: €80/notte</div>
 </div>
-
 <div class="chart-wrap">
   <div class="chart-title">📋 Ultimi prezzi rilevati</div>
-  <table id="tabellaUltimi">
-    <thead><tr><th>Categoria</th><th>Date</th><th>Prezzo</th><th>Var.</th></tr></thead>
-    <tbody id="tbodyUltimi"></tbody>
+  <table>
+    <thead><tr><th>Categoria</th><th>Tratta / Date</th><th>Prezzo</th><th>Var.</th></tr></thead>
+    <tbody id="tbody"></tbody>
   </table>
 </div>
-
-<div class="update">Dati raccolti automaticamente da GitHub Actions · aggiornamento ogni ora</div>
+<div class="update">Dati raccolti automaticamente · GitHub Actions · aggiornamento ogni ora</div>
 
 <script>
-const storico = {"traghetto_2026-08-27_2026-08-30": [{"ts": "2026-05-05T21:51:40.470919", "v": 600.0}, {"ts": "2026-05-06T16:37:01.635410", "v": 600.0}, {"ts": "2026-05-06T16:49:45.019605", "v": 600.0}, {"ts": "2026-05-06T20:59:28.911374", "v": 600.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 600.0}, {"ts": "2026-05-07T10:09:47.798483", "v": 600.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 600.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 600.0}, {"ts": "2026-05-08T05:48:10.293945", "v": 600.0}, {"ts": "2026-05-08T10:55:04.161368", "v": 600.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 600.0}], "traghetto_2026-08-28_2026-09-01": [{"ts": "2026-05-05T21:51:40.470919", "v": 600.0}, {"ts": "2026-05-06T16:37:01.635410", "v": 600.0}, {"ts": "2026-05-06T16:49:45.019605", "v": 600.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 600.0}, {"ts": "2026-05-07T10:09:47.798483", "v": 600.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 600.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 600.0}, {"ts": "2026-05-08T05:48:10.293945", "v": 600.0}, {"ts": "2026-05-08T10:55:04.161368", "v": 600.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 600.0}], "traghetto_2026-08-31_2026-09-03": [{"ts": "2026-05-05T21:51:40.470919", "v": 600.0}, {"ts": "2026-05-06T16:37:01.635410", "v": 600.0}, {"ts": "2026-05-06T16:49:45.019605", "v": 600.0}, {"ts": "2026-05-06T20:59:28.911374", "v": 600.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 600.0}, {"ts": "2026-05-07T10:09:47.798483", "v": 600.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 600.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 600.0}, {"ts": "2026-05-08T05:48:10.293945", "v": 600.0}, {"ts": "2026-05-08T10:55:04.161368", "v": 600.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 600.0}], "traghetto_2026-08-31_2026-09-04": [{"ts": "2026-05-05T21:51:40.470919", "v": 600.0}, {"ts": "2026-05-06T16:37:01.635410", "v": 600.0}, {"ts": "2026-05-06T16:49:45.019605", "v": 600.0}, {"ts": "2026-05-06T20:59:28.911374", "v": 600.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 600.0}, {"ts": "2026-05-07T10:09:47.798483", "v": 600.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 600.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 600.0}, {"ts": "2026-05-08T05:48:10.293945", "v": 600.0}, {"ts": "2026-05-08T10:55:04.161368", "v": 600.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 600.0}], "traghetto_2026-09-01_2026-09-04": [{"ts": "2026-05-05T21:51:40.470919", "v": 600.0}, {"ts": "2026-05-06T16:37:01.635410", "v": 600.0}, {"ts": "2026-05-06T16:49:45.019605", "v": 600.0}, {"ts": "2026-05-06T20:59:28.911374", "v": 600.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 600.0}, {"ts": "2026-05-07T10:09:47.798483", "v": 600.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 600.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 600.0}, {"ts": "2026-05-08T05:48:10.293945", "v": 600.0}, {"ts": "2026-05-08T10:55:04.161368", "v": 600.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 600.0}], "alloggio_2026-08-27_2026-08-30": [{"ts": "2026-05-06T16:37:01.635410", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-06T16:49:45.019605", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-06T20:59:28.911374", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-07T00:06:22.761348", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-07T10:09:47.798483", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-07T17:25:54.153615", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-07T21:32:51.753480", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T05:48:10.293945", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T10:55:04.161368", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T16:02:54.969458", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}], "volo_2026-08-28_2026-09-01": [{"ts": "2026-05-06T16:37:01.635410", "v": 156.0}, {"ts": "2026-05-06T16:49:45.019605", "v": 150.0}, {"ts": "2026-05-06T20:59:28.911374", "v": 162.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 203.0}, {"ts": "2026-05-07T10:09:47.798483", "v": 249.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 249.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 162.0}, {"ts": "2026-05-08T05:48:10.293945", "v": 162.0}, {"ts": "2026-05-08T10:55:04.161368", "v": 371.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 266.0}], "alloggio_2026-08-28_2026-09-01": [{"ts": "2026-05-06T16:37:01.635410", "v": {"per_notte": 575.0, "totale": 2300.0, "notti": 4}}, {"ts": "2026-05-06T16:49:45.019605", "v": {"per_notte": 575.0, "totale": 2300.0, "notti": 4}}, {"ts": "2026-05-06T20:59:28.911374", "v": {"per_notte": 575.0, "totale": 2300.0, "notti": 4}}, {"ts": "2026-05-07T00:06:22.761348", "v": {"per_notte": 492.0, "totale": 1968.0, "notti": 4}}, {"ts": "2026-05-07T10:09:47.798483", "v": {"per_notte": 575.0, "totale": 2300.0, "notti": 4}}, {"ts": "2026-05-07T17:25:54.153615", "v": {"per_notte": 575.0, "totale": 2300.0, "notti": 4}}, {"ts": "2026-05-07T21:32:51.753480", "v": {"per_notte": 575.0, "totale": 2300.0, "notti": 4}}, {"ts": "2026-05-08T05:48:10.293945", "v": {"per_notte": 575.0, "totale": 2300.0, "notti": 4}}, {"ts": "2026-05-08T10:55:04.161368", "v": {"per_notte": 575.0, "totale": 2300.0, "notti": 4}}, {"ts": "2026-05-08T16:02:54.969458", "v": {"per_notte": 575.0, "totale": 2300.0, "notti": 4}}], "volo_2026-08-31_2026-09-03": [{"ts": "2026-05-06T16:37:01.635410", "v": 266.0}, {"ts": "2026-05-06T16:49:45.019605", "v": 150.0}, {"ts": "2026-05-06T20:59:28.911374", "v": 249.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 227.0}, {"ts": "2026-05-07T10:09:47.798483", "v": 162.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 151.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 162.0}, {"ts": "2026-05-08T05:48:10.293945", "v": 249.0}, {"ts": "2026-05-08T10:55:04.161368", "v": 161.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 162.0}], "alloggio_2026-08-31_2026-09-03": [{"ts": "2026-05-06T16:37:01.635410", "v": {"per_notte": 305.0, "totale": 915.0, "notti": 3}}, {"ts": "2026-05-06T16:49:45.019605", "v": {"per_notte": 305.0, "totale": 915.0, "notti": 3}}, {"ts": "2026-05-06T20:59:28.911374", "v": {"per_notte": 305.0, "totale": 915.0, "notti": 3}}, {"ts": "2026-05-07T00:06:22.761348", "v": {"per_notte": 305.0, "totale": 915.0, "notti": 3}}, {"ts": "2026-05-07T10:09:47.798483", "v": {"per_notte": 305.0, "totale": 915.0, "notti": 3}}, {"ts": "2026-05-07T17:25:54.153615", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-07T21:32:51.753480", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T05:48:10.293945", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T10:55:04.161368", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T16:02:54.969458", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}], "volo_2026-08-31_2026-09-04": [{"ts": "2026-05-06T16:37:01.635410", "v": 371.0}, {"ts": "2026-05-06T16:49:45.019605", "v": 150.0}, {"ts": "2026-05-06T20:59:28.911374", "v": 371.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 203.0}, {"ts": "2026-05-07T10:09:47.798483", "v": 371.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 162.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 162.0}, {"ts": "2026-05-08T05:48:10.293945", "v": 162.0}, {"ts": "2026-05-08T10:55:04.161368", "v": 371.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 153.0}], "alloggio_2026-08-31_2026-09-04": [{"ts": "2026-05-06T16:37:01.635410", "v": {"per_notte": 401.0, "totale": 1604.0, "notti": 4}}, {"ts": "2026-05-06T16:49:45.019605", "v": {"per_notte": 401.0, "totale": 1604.0, "notti": 4}}, {"ts": "2026-05-06T20:59:28.911374", "v": {"per_notte": 401.0, "totale": 1604.0, "notti": 4}}, {"ts": "2026-05-07T00:06:22.761348", "v": {"per_notte": 401.0, "totale": 1604.0, "notti": 4}}, {"ts": "2026-05-07T10:09:47.798483", "v": {"per_notte": 401.0, "totale": 1604.0, "notti": 4}}, {"ts": "2026-05-07T17:25:54.153615", "v": {"per_notte": 392.0, "totale": 1568.0, "notti": 4}}, {"ts": "2026-05-07T21:32:51.753480", "v": {"per_notte": 392.0, "totale": 1568.0, "notti": 4}}, {"ts": "2026-05-08T05:48:10.293945", "v": {"per_notte": 392.0, "totale": 1568.0, "notti": 4}}, {"ts": "2026-05-08T10:55:04.161368", "v": {"per_notte": 385.0, "totale": 1540.0, "notti": 4}}, {"ts": "2026-05-08T16:02:54.969458", "v": {"per_notte": 475.0, "totale": 1900.0, "notti": 4}}], "volo_2026-09-01_2026-09-04": [{"ts": "2026-05-06T16:37:01.635410", "v": 113.0}, {"ts": "2026-05-06T16:49:45.019605", "v": 113.0}, {"ts": "2026-05-06T20:59:28.911374", "v": 162.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 164.0}, {"ts": "2026-05-07T10:09:47.798483", "v": 249.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 281.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 219.0}, {"ts": "2026-05-08T05:48:10.293945", "v": 159.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 220.0}], "alloggio_2026-09-01_2026-09-04": [{"ts": "2026-05-06T16:37:01.635410", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-06T16:49:45.019605", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-06T20:59:28.911374", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-07T00:06:22.761348", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-07T10:09:47.798483", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-07T17:25:54.153615", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-07T21:32:51.753480", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T05:48:10.293945", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T10:55:04.161368", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T16:02:54.969458", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}], "volo_2026-08-27_2026-08-30": [{"ts": "2026-05-06T16:49:45.019605", "v": 150.0}, {"ts": "2026-05-06T20:59:28.911374", "v": 249.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 223.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 238.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 249.0}, {"ts": "2026-05-08T10:55:04.161368", "v": 249.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 249.0}]};
+const storico = {"traghetto_2026-08-27_2026-08-30": [{"ts": "2026-05-05T21:51:40.470919", "v": 600.0}, {"ts": "2026-05-06T16:37:01.635410", "v": 600.0}, {"ts": "2026-05-06T16:49:45.019605", "v": 600.0}, {"ts": "2026-05-06T20:59:28.911374", "v": 600.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 600.0}, {"ts": "2026-05-07T10:09:47.798483", "v": 600.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 600.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 600.0}, {"ts": "2026-05-08T05:48:10.293945", "v": 600.0}, {"ts": "2026-05-08T10:55:04.161368", "v": 600.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 600.0}, {"ts": "2026-05-08T20:22:30.494837", "v": 600.0}], "traghetto_2026-08-28_2026-09-01": [{"ts": "2026-05-05T21:51:40.470919", "v": 600.0}, {"ts": "2026-05-06T16:37:01.635410", "v": 600.0}, {"ts": "2026-05-06T16:49:45.019605", "v": 600.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 600.0}, {"ts": "2026-05-07T10:09:47.798483", "v": 600.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 600.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 600.0}, {"ts": "2026-05-08T05:48:10.293945", "v": 600.0}, {"ts": "2026-05-08T10:55:04.161368", "v": 600.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 600.0}, {"ts": "2026-05-08T20:22:30.494837", "v": 600.0}], "traghetto_2026-08-31_2026-09-03": [{"ts": "2026-05-05T21:51:40.470919", "v": 600.0}, {"ts": "2026-05-06T16:37:01.635410", "v": 600.0}, {"ts": "2026-05-06T16:49:45.019605", "v": 600.0}, {"ts": "2026-05-06T20:59:28.911374", "v": 600.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 600.0}, {"ts": "2026-05-07T10:09:47.798483", "v": 600.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 600.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 600.0}, {"ts": "2026-05-08T05:48:10.293945", "v": 600.0}, {"ts": "2026-05-08T10:55:04.161368", "v": 600.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 600.0}, {"ts": "2026-05-08T20:22:30.494837", "v": 600.0}], "traghetto_2026-08-31_2026-09-04": [{"ts": "2026-05-05T21:51:40.470919", "v": 600.0}, {"ts": "2026-05-06T16:37:01.635410", "v": 600.0}, {"ts": "2026-05-06T16:49:45.019605", "v": 600.0}, {"ts": "2026-05-06T20:59:28.911374", "v": 600.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 600.0}, {"ts": "2026-05-07T10:09:47.798483", "v": 600.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 600.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 600.0}, {"ts": "2026-05-08T05:48:10.293945", "v": 600.0}, {"ts": "2026-05-08T10:55:04.161368", "v": 600.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 600.0}, {"ts": "2026-05-08T20:22:30.494837", "v": 600.0}], "traghetto_2026-09-01_2026-09-04": [{"ts": "2026-05-05T21:51:40.470919", "v": 600.0}, {"ts": "2026-05-06T16:37:01.635410", "v": 600.0}, {"ts": "2026-05-06T16:49:45.019605", "v": 600.0}, {"ts": "2026-05-06T20:59:28.911374", "v": 600.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 600.0}, {"ts": "2026-05-07T10:09:47.798483", "v": 600.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 600.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 600.0}, {"ts": "2026-05-08T05:48:10.293945", "v": 600.0}, {"ts": "2026-05-08T10:55:04.161368", "v": 600.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 600.0}, {"ts": "2026-05-08T20:22:30.494837", "v": 600.0}], "alloggio_2026-08-27_2026-08-30": [{"ts": "2026-05-06T16:37:01.635410", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-06T16:49:45.019605", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-06T20:59:28.911374", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-07T00:06:22.761348", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-07T10:09:47.798483", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-07T17:25:54.153615", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-07T21:32:51.753480", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T05:48:10.293945", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T10:55:04.161368", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T16:02:54.969458", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T20:22:30.494837", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}], "volo_2026-08-28_2026-09-01": [{"ts": "2026-05-06T16:37:01.635410", "v": 156.0}, {"ts": "2026-05-06T16:49:45.019605", "v": 150.0}, {"ts": "2026-05-06T20:59:28.911374", "v": 162.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 203.0}, {"ts": "2026-05-07T10:09:47.798483", "v": 249.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 249.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 162.0}, {"ts": "2026-05-08T05:48:10.293945", "v": 162.0}, {"ts": "2026-05-08T10:55:04.161368", "v": 371.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 266.0}], "alloggio_2026-08-28_2026-09-01": [{"ts": "2026-05-06T16:37:01.635410", "v": {"per_notte": 575.0, "totale": 2300.0, "notti": 4}}, {"ts": "2026-05-06T16:49:45.019605", "v": {"per_notte": 575.0, "totale": 2300.0, "notti": 4}}, {"ts": "2026-05-06T20:59:28.911374", "v": {"per_notte": 575.0, "totale": 2300.0, "notti": 4}}, {"ts": "2026-05-07T00:06:22.761348", "v": {"per_notte": 492.0, "totale": 1968.0, "notti": 4}}, {"ts": "2026-05-07T10:09:47.798483", "v": {"per_notte": 575.0, "totale": 2300.0, "notti": 4}}, {"ts": "2026-05-07T17:25:54.153615", "v": {"per_notte": 575.0, "totale": 2300.0, "notti": 4}}, {"ts": "2026-05-07T21:32:51.753480", "v": {"per_notte": 575.0, "totale": 2300.0, "notti": 4}}, {"ts": "2026-05-08T05:48:10.293945", "v": {"per_notte": 575.0, "totale": 2300.0, "notti": 4}}, {"ts": "2026-05-08T10:55:04.161368", "v": {"per_notte": 575.0, "totale": 2300.0, "notti": 4}}, {"ts": "2026-05-08T16:02:54.969458", "v": {"per_notte": 575.0, "totale": 2300.0, "notti": 4}}, {"ts": "2026-05-08T20:22:30.494837", "v": {"per_notte": 575.0, "totale": 2300.0, "notti": 4}}], "volo_2026-08-31_2026-09-03": [{"ts": "2026-05-06T16:37:01.635410", "v": 266.0}, {"ts": "2026-05-06T16:49:45.019605", "v": 150.0}, {"ts": "2026-05-06T20:59:28.911374", "v": 249.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 227.0}, {"ts": "2026-05-07T10:09:47.798483", "v": 162.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 151.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 162.0}, {"ts": "2026-05-08T05:48:10.293945", "v": 249.0}, {"ts": "2026-05-08T10:55:04.161368", "v": 161.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 162.0}], "alloggio_2026-08-31_2026-09-03": [{"ts": "2026-05-06T16:37:01.635410", "v": {"per_notte": 305.0, "totale": 915.0, "notti": 3}}, {"ts": "2026-05-06T16:49:45.019605", "v": {"per_notte": 305.0, "totale": 915.0, "notti": 3}}, {"ts": "2026-05-06T20:59:28.911374", "v": {"per_notte": 305.0, "totale": 915.0, "notti": 3}}, {"ts": "2026-05-07T00:06:22.761348", "v": {"per_notte": 305.0, "totale": 915.0, "notti": 3}}, {"ts": "2026-05-07T10:09:47.798483", "v": {"per_notte": 305.0, "totale": 915.0, "notti": 3}}, {"ts": "2026-05-07T17:25:54.153615", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-07T21:32:51.753480", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T05:48:10.293945", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T10:55:04.161368", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T16:02:54.969458", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T20:22:30.494837", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}], "volo_2026-08-31_2026-09-04": [{"ts": "2026-05-06T16:37:01.635410", "v": 371.0}, {"ts": "2026-05-06T16:49:45.019605", "v": 150.0}, {"ts": "2026-05-06T20:59:28.911374", "v": 371.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 203.0}, {"ts": "2026-05-07T10:09:47.798483", "v": 371.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 162.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 162.0}, {"ts": "2026-05-08T05:48:10.293945", "v": 162.0}, {"ts": "2026-05-08T10:55:04.161368", "v": 371.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 153.0}], "alloggio_2026-08-31_2026-09-04": [{"ts": "2026-05-06T16:37:01.635410", "v": {"per_notte": 401.0, "totale": 1604.0, "notti": 4}}, {"ts": "2026-05-06T16:49:45.019605", "v": {"per_notte": 401.0, "totale": 1604.0, "notti": 4}}, {"ts": "2026-05-06T20:59:28.911374", "v": {"per_notte": 401.0, "totale": 1604.0, "notti": 4}}, {"ts": "2026-05-07T00:06:22.761348", "v": {"per_notte": 401.0, "totale": 1604.0, "notti": 4}}, {"ts": "2026-05-07T10:09:47.798483", "v": {"per_notte": 401.0, "totale": 1604.0, "notti": 4}}, {"ts": "2026-05-07T17:25:54.153615", "v": {"per_notte": 392.0, "totale": 1568.0, "notti": 4}}, {"ts": "2026-05-07T21:32:51.753480", "v": {"per_notte": 392.0, "totale": 1568.0, "notti": 4}}, {"ts": "2026-05-08T05:48:10.293945", "v": {"per_notte": 392.0, "totale": 1568.0, "notti": 4}}, {"ts": "2026-05-08T10:55:04.161368", "v": {"per_notte": 385.0, "totale": 1540.0, "notti": 4}}, {"ts": "2026-05-08T16:02:54.969458", "v": {"per_notte": 475.0, "totale": 1900.0, "notti": 4}}, {"ts": "2026-05-08T20:22:30.494837", "v": {"per_notte": 475.0, "totale": 1900.0, "notti": 4}}], "volo_2026-09-01_2026-09-04": [{"ts": "2026-05-06T16:37:01.635410", "v": 113.0}, {"ts": "2026-05-06T16:49:45.019605", "v": 113.0}, {"ts": "2026-05-06T20:59:28.911374", "v": 162.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 164.0}, {"ts": "2026-05-07T10:09:47.798483", "v": 249.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 281.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 219.0}, {"ts": "2026-05-08T05:48:10.293945", "v": 159.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 220.0}], "alloggio_2026-09-01_2026-09-04": [{"ts": "2026-05-06T16:37:01.635410", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-06T16:49:45.019605", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-06T20:59:28.911374", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-07T00:06:22.761348", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-07T10:09:47.798483", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-07T17:25:54.153615", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-07T21:32:51.753480", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T05:48:10.293945", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T10:55:04.161368", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T16:02:54.969458", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}, {"ts": "2026-05-08T20:22:30.494837", "v": {"per_notte": 317.0, "totale": 951.0, "notti": 3}}], "volo_2026-08-27_2026-08-30": [{"ts": "2026-05-06T16:49:45.019605", "v": 150.0}, {"ts": "2026-05-06T20:59:28.911374", "v": 249.0}, {"ts": "2026-05-07T00:06:22.761348", "v": 223.0}, {"ts": "2026-05-07T17:25:54.153615", "v": 238.0}, {"ts": "2026-05-07T21:32:51.753480", "v": 249.0}, {"ts": "2026-05-08T10:55:04.161368", "v": 249.0}, {"ts": "2026-05-08T16:02:54.969458", "v": 249.0}], "volo_FCO_2026-08-27_2026-08-30": [{"ts": "2026-05-08T20:22:30.494837", "v": 162.0}], "volo_NAP_2026-08-27_2026-08-30": [{"ts": "2026-05-08T20:22:30.494837", "v": 176.0}], "volo_FCO_2026-08-28_2026-09-01": [{"ts": "2026-05-08T20:22:30.494837", "v": 249.0}], "volo_NAP_2026-08-28_2026-09-01": [{"ts": "2026-05-08T20:22:30.494837", "v": 172.0}], "volo_NAP_2026-08-31_2026-09-03": [{"ts": "2026-05-08T20:22:30.494837", "v": 185.0}], "volo_FCO_2026-08-31_2026-09-04": [{"ts": "2026-05-08T20:22:30.494837", "v": 162.0}], "volo_NAP_2026-08-31_2026-09-04": [{"ts": "2026-05-08T20:22:30.494837", "v": 185.0}], "volo_FCO_2026-09-01_2026-09-04": [{"ts": "2026-05-08T20:22:30.494837", "v": 229.0}], "volo_NAP_2026-09-01_2026-09-04": [{"ts": "2026-05-08T20:22:30.494837", "v": 150.0}]};
 const SOGLIE = {"volo": 200, "traghetto": 220, "alloggio": 80};
+const colori = ["#4F8EF7","#fb923c","#4ade80","#c084fc","#f87171","#fbbf24"];
 
-// ── Prepara dataset per tipo ──
-function buildDatasets(tipo, campo) {
-  const colori = ["#4F8EF7","#fb923c","#4ade80","#c084fc","#f87171"];
-  const ds = [];
-  let i = 0;
-  for (const [chiave, serie] of Object.entries(storico)) {
-    if (!chiave.startsWith(tipo)) continue;
-    const label = chiave.replace(tipo+'_','').replace('_','→');
-    const punti = (serie||[]).map(p => ({
-      x: new Date(p.ts),
-      y: typeof p.v === 'object' ? p.v.per_notte : p.v
-    })).filter(p => p.y);
+function buildDs(prefisso) {
+  const ds = []; let i = 0;
+  for (const [k,v] of Object.entries(storico)) {
+    if (!k.startsWith(prefisso)||!v||!v.length) { continue; }
+    const label = k.replace(prefisso+'_','').replace(/_/g,'→');
+    const punti = v.map(p=>({x:new Date(p.ts),y:typeof p.v==='object'?p.v.per_notte:p.v})).filter(p=>p.y);
     if (!punti.length) { i++; continue; }
-    ds.push({
-      label, data: punti,
-      borderColor: colori[i%colori.length],
-      backgroundColor: colori[i%colori.length]+'22',
-      tension: 0.3, fill: false, pointRadius: 4
-    });
+    ds.push({label,data:punti,borderColor:colori[i%colori.length],backgroundColor:colori[i%colori.length]+'22',tension:.3,fill:false,pointRadius:4});
     i++;
   }
   return ds;
 }
 
-function sogliAnnotation(valore) {
-  return {
-    type: 'line', yMin: valore, yMax: valore,
-    borderColor: '#fbbf24', borderWidth: 1, borderDash: [4,4],
-  };
-}
+const opts = {responsive:true,plugins:{legend:{labels:{color:'#8892a4',font:{size:11}}}},scales:{x:{type:'time',time:{unit:'hour',displayFormats:{hour:'dd/MM HH:mm'}},ticks:{color:'#8892a4',maxTicksLimit:8},grid:{color:'#2a2d3a'}},y:{ticks:{color:'#8892a4',callback:v=>'€'+v},grid:{color:'#2a2d3a'}}}};
 
-const opzioniBase = (soglia) => ({
-  responsive: true,
-  plugins: { legend: { labels: { color: '#8892a4', font: { size: 11 } } } },
-  scales: {
-    x: {
-      type: 'time',
-      time: { unit: 'hour', displayFormats: { hour: 'dd/MM HH:mm' } },
-      ticks: { color: '#8892a4', maxTicksLimit: 8 },
-      grid: { color: '#2a2d3a' }
-    },
-    y: {
-      ticks: { color: '#8892a4', callback: v => '€'+v },
-      grid: { color: '#2a2d3a' }
-    }
-  }
+[['Voli','volo'],['Traghetti','traghetto'],['Alloggi','alloggio']].forEach(([nome,key])=>{
+  const ds = buildDs(key);
+  const ctx = document.getElementById('chart'+nome).getContext('2d');
+  if (ds.length) new Chart(ctx,{type:'line',data:{datasets:ds},options:opts});
+  else ctx.canvas.parentElement.insertAdjacentHTML('beforeend','<p style="color:#8892a4;padding:1rem">Dati in raccolta...</p>');
 });
 
-// ── Grafici ──
-['Voli','Traghetti','Alloggi'].forEach(tipo => {
-  const key = tipo === 'Voli' ? 'volo' : tipo === 'Traghetti' ? 'traghetto' : 'alloggio';
-  const ds = buildDatasets(key);
-  const ctx = document.getElementById('chart'+tipo).getContext('2d');
-  if (!ds.length) {
-    ctx.canvas.parentElement.insertAdjacentHTML('beforeend',
-      '<div class="empty">Dati in raccolta — torna tra qualche ora</div>');
-    return;
-  }
-  new Chart(ctx, { type: 'line', data: { datasets: ds }, options: opzioniBase(SOGLIE[key]) });
-});
-
-// ── KPI Cards ──
-function ultimoValore(tipo) {
-  let min = null;
+// KPI
+function ultimoMin(pref) {
+  let min=null;
   for (const [k,v] of Object.entries(storico)) {
-    if (!k.startsWith(tipo)||!v||!v.length) continue;
-    const last = v[v.length-1];
-    const val = typeof last.v === 'object' ? last.v.per_notte : last.v;
-    if (val && (min === null || val < min)) min = val;
+    if(!k.startsWith(pref)||!v||!v.length) continue;
+    const last=v[v.length-1]; const val=typeof last.v==='object'?last.v.per_notte:last.v;
+    if(val&&(min===null||val<min)) min=val;
   }
   return min;
 }
-
-function trend(tipo) {
+function trend(pref) {
   for (const [k,v] of Object.entries(storico)) {
-    if (!k.startsWith(tipo)||!v||v.length<2) continue;
-    const a = typeof v[v.length-2].v==='object'?v[v.length-2].v.per_notte:v[v.length-2].v;
-    const b = typeof v[v.length-1].v==='object'?v[v.length-1].v.per_notte:v[v.length-1].v;
-    if (a&&b) return b<a?'↓':b>a?'↑':'→';
+    if(!k.startsWith(pref)||!v||v.length<2) continue;
+    const a=typeof v[v.length-2].v==='object'?v[v.length-2].v.per_notte:v[v.length-2].v;
+    const b=typeof v[v.length-1].v==='object'?v[v.length-1].v.per_notte:v[v.length-1].v;
+    if(a&&b) return b<a?'↓':b>a?'↑':'→';
   }
   return '–';
 }
-
-const kpiData = [
-  { label:'Volo minimo (A/R 2 pers)', tipo:'volo', soglia: SOGLIE.volo, unita:'€', extra:'' },
-  { label:'Traghetto minimo (A/R 2 pers)', tipo:'traghetto', soglia: SOGLIE.traghetto, unita:'€', extra:'' },
-  { label:'Alloggio minimo', tipo:'alloggio', soglia: SOGLIE.alloggio, unita:'€', extra:'/notte' },
+const kpis=[
+  {label:'Volo ITA minimo (A/R 2 pers)',pref:'volo',soglia:SOGLIE.volo,extra:''},
+  {label:'Traghetto minimo (A/R 2 pers)',pref:'traghetto',soglia:SOGLIE.traghetto,extra:''},
+  {label:'Alloggio minimo',pref:'alloggio',soglia:SOGLIE.alloggio,extra:'/notte'},
 ];
-
-const kpiDiv = document.getElementById('kpis');
-kpiData.forEach(k => {
-  const v = ultimoValore(k.tipo);
-  const t = trend(k.tipo);
-  const tClass = t==='↓'?'down':t==='↑'?'up':'eq';
-  const badgeClass = v&&v<=k.soglia?'badge-green':'badge-yellow';
-  const badgeTxt = v&&v<=k.soglia?'ottimo':'in monitoraggio';
-  kpiDiv.innerHTML += `
-    <div class="card">
-      <div class="card-label">${k.label}</div>
-      <div class="card-value">
-        ${v ? k.unita+Math.round(v)+k.extra : '–'}
-        <span class="badge ${badgeClass}">${badgeTxt}</span>
-      </div>
-      <div class="card-sub">
-        Trend: <span class="${tClass}">${t}</span> &nbsp;·&nbsp; Soglia ottima: ${k.unita}${k.soglia}${k.extra}
-      </div>
-    </div>`;
+const kDiv=document.getElementById('kpis');
+kpis.forEach(k=>{
+  const v=ultimoMin(k.pref); const t=trend(k.pref);
+  const tc=t==='↓'?'down':t==='↑'?'up':'';
+  const bc=v&&v<=k.soglia?'badge-green':'badge-yellow';
+  const bt=v&&v<=k.soglia?'ottimo':'in monitoraggio';
+  kDiv.innerHTML+=`<div class="card"><div class="card-label">${k.label}</div><div class="card-value">${v?'€'+Math.round(v)+k.extra:'–'}<span class="badge ${bc}">${bt}</span></div><div class="card-sub">Trend: <span class="${tc}">${t}</span> · Soglia: €${k.soglia}${k.extra}</div></div>`;
 });
 
-// ── Tabella ultimi valori ──
-const tbody = document.getElementById('tbodyUltimi');
-const emoji = {volo:'✈️', traghetto:'⛴️', alloggio:'🏠'};
-for (const [chiave, serie] of Object.entries(storico)) {
-  if (!serie||!serie.length) continue;
-  const tipo = chiave.split('_')[0];
-  const date = chiave.replace(tipo+'_','').replace('_','→');
-  const last = serie[serie.length-1];
-  const prev = serie.length>1 ? serie[serie.length-2] : null;
-  const val = typeof last.v==='object'?last.v.per_notte:last.v;
-  const valPrev = prev ? (typeof prev.v==='object'?prev.v.per_notte:prev.v) : null;
-  if (!val) continue;
-  const diff = valPrev ? Math.round(val-valPrev) : 0;
-  const diffTxt = diff===0?'–':diff<0?`<span class="down">▼ €${Math.abs(diff)}</span>`:`<span class="up">▲ €${diff}</span>`;
-  tbody.innerHTML += `<tr>
-    <td>${emoji[tipo]||''} ${tipo}</td>
-    <td>${date}</td>
-    <td><b>€${Math.round(val)}</b></td>
-    <td>${diffTxt}</td>
-  </tr>`;
+// Tabella
+const tbody=document.getElementById('tbody');
+const emj={volo:'✈️',traghetto:'⛴️',alloggio:'🏠'};
+for(const[k,v] of Object.entries(storico)){
+  if(!v||!v.length) continue;
+  const tipo=k.split('_')[0];
+  const label=k.replace(tipo+'_','').replace(/_/g,' ');
+  const last=v[v.length-1]; const prev=v.length>1?v[v.length-2]:null;
+  const val=typeof last.v==='object'?last.v.per_notte:last.v;
+  const vp=prev?(typeof prev.v==='object'?prev.v.per_notte:prev.v):null;
+  if(!val) continue;
+  const diff=vp?Math.round(val-vp):0;
+  const dt=diff===0?'–':diff<0?`<span class="down">▼ €${Math.abs(diff)}</span>`:`<span class="up">▲ €${diff}</span>`;
+  tbody.innerHTML+=`<tr><td>${emj[tipo]||''} ${tipo}</td><td>${label}</td><td><b>€${Math.round(val)}</b></td><td>${dt}</td></tr>`;
 }
-if (!tbody.innerHTML) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--sub);padding:2rem">Dati in raccolta — torna tra qualche ora</td></tr>';
+if(!tbody.innerHTML) tbody.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--sub);padding:2rem">Dati in raccolta — torna tra qualche ora</td></tr>';
 </script>
 </body>
 </html>
