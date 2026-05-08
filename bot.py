@@ -98,10 +98,9 @@ def browser_get(url, wait_selector=None, timeout=35000):
         return ""
 
 def ita_link(iata_da, iata_a, data_andata, data_ritorno):
-    return (f"https://www.ita-airways.com/it/it/flights/search"
-            f"?from={iata_da}&to={iata_a}"
-            f"&departureDate={data_andata}&returnDate={data_ritorno}"
-            f"&adults=2&cabin=ECONOMY")
+    return (f"https://www.kayak.it/flights/{iata_da}-{iata_a}"
+            f"/{data_andata}/{data_ritorno}/2adults"
+            f"?airlines=ITA&sort=price_a")
 
 def cerca_volo_ita(iata_da, iata_a, data_andata, data_ritorno):
     # Tentativo 1: Kayak filtrato ITA Airways
