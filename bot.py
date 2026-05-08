@@ -8,8 +8,6 @@ from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
 
-# ─── CONFIG ────────────────────────────────────────────────────────────────────
-
 TELEGRAM_TOKEN   = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
@@ -21,23 +19,20 @@ DATE_FINESTRE = [
     ("2026-09-01", "2026-09-04"),
 ]
 
-# Tratte aeree da monitorare (solo ITA Airways)
 TRATTE_VOLO = [
-    ("FCO", "AHO", "Roma FCO"),    # Fiumicino → Alghero
-    ("NAP", "AHO", "Napoli NAP"),  # Napoli → Alghero
+    ("FCO", "AHO", "Roma FCO"),
+    ("NAP", "AHO", "Napoli NAP"),
 ]
 
 SOGLIE_OTTIME = {
-    "volo":      200,   # A/R 2 persone €
-    "traghetto": 220,   # A/R 2 persone €
-    "alloggio":  80,    # per notte €
+    "volo":      200,
+    "traghetto": 220,
+    "alloggio":  80,
 }
 
 FILE_STORICO   = Path("data/storico.json")
 FILE_DASHBOARD = Path("docs/index.html")
 SESSIONE = requests.Session()
-
-# ─── UTILS ─────────────────────────────────────────────────────────────────────
 
 UA_LIST = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -75,11 +70,9 @@ def telegram(msg):
         r = requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg,
                                       "parse_mode": "HTML", "disable_web_page_preview": True}, timeout=10)
         r.raise_for_status()
-        print(f"  [TG] ✓ notifica inviata")
+        print(f"  [TG] OK notifica inviata")
     except Exception as e:
-        print(f"  [TG] ✗ errore: {e}")
-
-# ─── PLAYWRIGHT ─────────────────────────────────────────────────────────────────
+        print(f"  [TG] errore: {e}")
 
 def browser_get(url, wait_selector=None, timeout=35000):
     from playwright.sync_api import sync_playwright
@@ -104,11 +97,13 @@ def browser_get(url, wait_selector=None, timeout=35000):
         print(f"  [BROWSER] errore: {e}")
         return ""
 
-# ─── SCRAPER VOLI — solo ITA Airways ──────────────────────────────────────────
+def ita_link(iata_da, iata_a, data_andata, data_ritorno):
+    return (f"https://www.ita-airways.com/it/it/flights/search"
+            f"?from={iata_da}&to={iata_a}"
+            f"&departureDate={data_andata}&returnDate={data_ritorno}"
+            f"&adults=2&cabin=ECONOMY")
 
 def cerca_volo_ita(iata_da, iata_a, data_andata, data_ritorno):
-    """Cerca voli ITA Airways A/R per 2 persone. Ignora altre compagnie."""
-
     # Tentativo 1: Kayak filtrato ITA Airways
     try:
         url = (f"https://www.kayak.it/flights/{iata_da}-{iata_a}"
@@ -117,25 +112,24 @@ def cerca_volo_ita(iata_da, iata_a, data_andata, data_ritorno):
         if html:
             soup = BeautifulSoup(html, "html.parser")
             testo_pagina = soup.get_text()
-            # Verifica presenza ITA nella pagina
-            if not any(k in testo_pagina for k in ["ITA", "Ita Airways", "ita airways"]):
-                print(f"  [VOLO KAYAK] ITA Airways non presente nei risultati")
-            else:
+            if any(k in testo_pagina for k in ["ITA", "Ita Airways", "ita airways"]):
                 prezzi = []
                 for el in soup.find_all(attrs={"class": re.compile(r'price|Price', re.I)}):
                     v = estrai_primo_numero(el.get_text())
                     if v and 80 < v < 5000: prezzi.append(v)
                 if prezzi:
                     minimo = min(prezzi)
-                    print(f"  [VOLO KAYAK/ITA] trovato €{minimo:.0f} (2 pers A/R)")
+                    print(f"  [VOLO KAYAK/ITA] trovato EUR{minimo:.0f} (2 pers A/R)")
                     return float(minimo)
+            else:
+                print(f"  [VOLO KAYAK] ITA Airways non presente")
     except Exception as e:
         print(f"  [VOLO KAYAK] errore: {e}")
 
     # Tentativo 2: ITA Airways sito ufficiale
     try:
         pausa(3, 5)
-        url2 = https://www.ita-airways.com/it/it/flights/search?from={iata_da}&to={iata_a}&departureDate={data_andata}&returnDate={data_ritorno}&adults=2&cabin=ECONOMY
+        url2 = ita_link(iata_da, iata_a, data_andata, data_ritorno)
         html2 = browser_get(url2, wait_selector="[class*='price'],[class*='fare']", timeout=40000)
         if html2:
             soup2 = BeautifulSoup(html2, "html.parser")
@@ -143,7 +137,6 @@ def cerca_volo_ita(iata_da, iata_a, data_andata, data_ritorno):
             for el in soup2.find_all(class_=re.compile(r'price|fare|amount|total', re.I)):
                 v = estrai_primo_numero(el.get_text())
                 if v and 40 < v < 3000: prezzi2.append(v)
-            # JSON embedded
             for script in soup2.find_all("script"):
                 txt = script.string or ""
                 if "price" in txt.lower() and len(txt) > 200:
@@ -152,7 +145,7 @@ def cerca_volo_ita(iata_da, iata_a, data_andata, data_ritorno):
             if prezzi2:
                 minimo2 = min(prezzi2)
                 totale = minimo2 if minimo2 > 100 else minimo2 * 2
-                print(f"  [VOLO ITA sito] trovato €{totale:.0f} (2 pers A/R)")
+                print(f"  [VOLO ITA sito] trovato EUR{totale:.0f} (2 pers A/R)")
                 return float(totale)
     except Exception as e:
         print(f"  [VOLO ITA sito] errore: {e}")
@@ -164,22 +157,19 @@ def cerca_volo_ita(iata_da, iata_a, data_andata, data_ritorno):
                 f"?departureDate={data_andata}&returnDate={data_ritorno}&adults=2&airlines=ITA")
         r3 = SESSIONE.get(url3, headers=hdrs(), timeout=20)
         if any(k in r3.text for k in ["ITA", "ita airways"]):
-            matches3 = re.findall(r'€\s*(\d{2,4})', r3.text)
+            matches3 = re.findall(r'EUR\s*(\d{2,4})', r3.text)
             valori3 = [int(m) for m in matches3 if 80 < int(m) < 5000]
             if valori3:
                 minimo3 = min(valori3)
-                print(f"  [VOLO VOLAGRATIS/ITA] trovato €{minimo3:.0f}")
+                print(f"  [VOLO VOLAGRATIS/ITA] trovato EUR{minimo3:.0f}")
                 return float(minimo3)
     except Exception as e:
         print(f"  [VOLO VOLAGRATIS] errore: {e}")
 
-    print(f"  [VOLO {iata_da}→{iata_a}] ITA Airways non trovata")
+    print(f"  [VOLO {iata_da}->{iata_a}] ITA Airways non trovata")
     return None
 
-# ─── SCRAPER TRAGHETTI ──────────────────────────────────────────────────────────
-
 def cerca_traghetto(data_andata, data_ritorno):
-    # Tentativo 1: Traghetti.com con Playwright
     try:
         da_fmt = datetime.strptime(data_andata, "%Y-%m-%d").strftime("%d-%m-%Y")
         ar_fmt = datetime.strptime(data_ritorno, "%Y-%m-%d").strftime("%d-%m-%Y")
@@ -194,17 +184,16 @@ def cerca_traghetto(data_andata, data_ritorno):
                 v = estrai_primo_numero(el.get_text())
                 if v and 15 < v < 600: prezzi.append(v)
             if not prezzi:
-                matches = re.findall(r'€\s*(\d{2,3})', html)
+                matches = re.findall(r'EUR\s*(\d{2,3})', html)
                 prezzi = [int(m) for m in matches if 15 < int(m) < 600]
             if prezzi:
                 minimo = min(prezzi)
                 totale = round(minimo * 4, 0)
-                print(f"  [TRAGHETTO traghetti.com] €{minimo:.0f}/pp → €{totale:.0f} (2 pers A/R)")
+                print(f"  [TRAGHETTO traghetti.com] EUR{minimo:.0f}/pp -> EUR{totale:.0f} (2 pers A/R)")
                 return float(totale)
     except Exception as e:
         print(f"  [TRAGHETTO traghetti.com] errore: {e}")
 
-    # Tentativo 2: DirectFerries
     try:
         pausa(2, 4)
         da_fmt2 = datetime.strptime(data_andata, "%Y-%m-%d").strftime("%d-%m-%Y")
@@ -214,26 +203,25 @@ def cerca_traghetto(data_andata, data_ritorno):
                 f"&depart_date={da_fmt2}&return_date={ar_fmt2}&adults=2&children=0&return=1")
         html2 = browser_get(url2, wait_selector="[class*='price']")
         if html2:
-            matches2 = re.findall(r'€\s*(\d{2,3}(?:[.,]\d{2})?)', html2)
+            matches2 = re.findall(r'EUR\s*(\d{2,3}(?:[.,]\d{2})?)', html2)
             valori2 = [float(m.replace(',','.')) for m in matches2 if 15 < float(m.replace(',','.')) < 600]
             if valori2:
                 minimo2 = min(valori2)
                 totale2 = round(minimo2 * 2, 0)
-                print(f"  [TRAGHETTO directferries] €{minimo2:.0f} → €{totale2:.0f} (2 pers A/R)")
+                print(f"  [TRAGHETTO directferries] EUR{minimo2:.0f} -> EUR{totale2:.0f} (2 pers A/R)")
                 return float(totale2)
     except Exception as e:
         print(f"  [TRAGHETTO directferries] errore: {e}")
 
-    # Tentativo 3: Grimaldi tariffe (SSL disabilitato)
     try:
         pausa(2, 4)
         r3 = SESSIONE.get("https://www.grimaldi-lines.com/it/tariffe/", headers=hdrs(), timeout=15, verify=False)
-        matches3 = re.findall(r'€\s*(\d{2,3})', r3.text)
+        matches3 = re.findall(r'EUR\s*(\d{2,3})', r3.text)
         valori3 = [int(m) for m in matches3 if 20 < int(m) < 300]
         if valori3:
             minimo3 = min(valori3)
             totale3 = minimo3 * 4
-            print(f"  [TRAGHETTO grimaldi] €{minimo3:.0f}/pp → €{totale3:.0f} (2 pers A/R stima)")
+            print(f"  [TRAGHETTO grimaldi] EUR{minimo3:.0f}/pp -> EUR{totale3:.0f} (2 pers A/R stima)")
             return float(totale3)
     except Exception as e:
         print(f"  [TRAGHETTO grimaldi] errore: {e}")
@@ -241,13 +229,10 @@ def cerca_traghetto(data_andata, data_ritorno):
     print(f"  [TRAGHETTO] nessun prezzo trovato")
     return None
 
-# ─── SCRAPER ALLOGGI ────────────────────────────────────────────────────────────
-
 def cerca_alloggio(data_andata, data_ritorno):
     notti = (datetime.strptime(data_ritorno, "%Y-%m-%d") -
              datetime.strptime(data_andata, "%Y-%m-%d")).days
 
-    # Tentativo 1: Airbnb con Playwright
     try:
         url = (f"https://www.airbnb.it/s/Alghero--Sardinia/homes"
                f"?checkin={data_andata}&checkout={data_ritorno}"
@@ -265,18 +250,17 @@ def cerca_alloggio(data_andata, data_ritorno):
                     v = estrai_primo_numero(el.get_text())
                     if v and 30 < v < 3000: prezzi.append(v)
             if not prezzi:
-                matches2 = re.findall(r'€(\d{2,4})', html)
+                matches2 = re.findall(r'EUR(\d{2,4})', html)
                 prezzi = [int(m) for m in matches2 if 30 < int(m) < 3000]
             if prezzi:
                 minimo = min(prezzi)
                 per_notte = minimo if minimo < 600 else round(minimo / notti, 0)
                 totale = per_notte * notti
-                print(f"  [AIRBNB] €{per_notte:.0f}/notte → €{totale:.0f} totale")
+                print(f"  [AIRBNB] EUR{per_notte:.0f}/notte -> EUR{totale:.0f} totale")
                 return {"per_notte": per_notte, "totale": totale, "notti": notti}
     except Exception as e:
         print(f"  [AIRBNB] errore: {e}")
 
-    # Tentativo 2: Booking con Playwright
     try:
         pausa(3, 5)
         url2 = (f"https://www.booking.com/searchresults.it.html"
@@ -290,13 +274,13 @@ def cerca_alloggio(data_andata, data_ritorno):
                 v = estrai_primo_numero(el.get_text().replace('.',''))
                 if v and 50 < v < 10000: prezzi2.append(v)
             if not prezzi2:
-                matches2 = re.findall(r'€\s*(\d{2,4})', html2)
+                matches2 = re.findall(r'EUR\s*(\d{2,4})', html2)
                 prezzi2 = [int(m) for m in matches2 if 50 < int(m) < 10000]
             if prezzi2:
                 minimo2 = min(prezzi2)
                 per_notte2 = minimo2 if minimo2 < 600 else round(minimo2 / notti, 0)
                 totale2 = per_notte2 * notti
-                print(f"  [BOOKING] €{per_notte2:.0f}/notte → €{totale2:.0f} totale")
+                print(f"  [BOOKING] EUR{per_notte2:.0f}/notte -> EUR{totale2:.0f} totale")
                 return {"per_notte": per_notte2, "totale": totale2, "notti": notti}
     except Exception as e:
         print(f"  [BOOKING] errore: {e}")
@@ -304,22 +288,23 @@ def cerca_alloggio(data_andata, data_ritorno):
     print(f"  [ALLOGGIO] nessun prezzo trovato")
     return None
 
-# ─── NOTIFICHE ──────────────────────────────────────────────────────────────────
-
 def controlla_notifiche(chiave, nuovo, vecchio, soglia, label, link):
     msgs = []
     ora = datetime.now().strftime("%d/%m %H:%M")
     if vecchio is not None and nuovo < vecchio:
         diff = vecchio - nuovo
-        msgs.append(f"📉 <b>Prezzo sceso!</b>\n{label}\n<b>€{nuovo:.0f}</b> (era €{vecchio:.0f}, risparmi €{diff:.0f})\n🔗 <a href='{link}'>Prenota subito</a>\n<i>{ora}</i>")
+        msgs.append(f"<b>Prezzo sceso!</b>\n{label}\n<b>EUR{nuovo:.0f}</b> (era EUR{vecchio:.0f}, risparmi EUR{diff:.0f})\n<a href='{link}'>Prenota subito</a>\n<i>{ora}</i>")
     if nuovo <= soglia:
-        msgs.append(f"🎯 <b>Prezzo ottimo!</b>\n{label}\n<b>€{nuovo:.0f}</b> ≤ soglia €{soglia:.0f}\n🔗 <a href='{link}'>Prenota subito</a>\n<i>{ora}</i>")
+        msgs.append(f"<b>Prezzo ottimo!</b>\n{label}\n<b>EUR{nuovo:.0f}</b> sotto soglia EUR{soglia:.0f}\n<a href='{link}'>Prenota subito</a>\n<i>{ora}</i>")
     return msgs
-
-# ─── DASHBOARD ──────────────────────────────────────────────────────────────────
 
 def genera_dashboard(storico):
     ora = datetime.now().strftime("%d/%m/%Y %H:%M")
+    storico_json = json.dumps(storico, ensure_ascii=False)
+    soglie_json = json.dumps(SOGLIE_OTTIME)
+    soglia_volo = SOGLIE_OTTIME['volo']
+    soglia_traghetto = SOGLIE_OTTIME['traghetto']
+    soglia_alloggio = SOGLIE_OTTIME['alloggio']
 
     html = f"""<!DOCTYPE html>
 <html lang="it">
@@ -330,150 +315,100 @@ def genera_dashboard(storico):
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <style>
-  :root {{ --bg:#0f1117; --card:#1a1d27; --border:#2a2d3a; --text:#e2e8f0; --sub:#8892a4; --green:#4ade80; --blue:#60a5fa; --orange:#fb923c; --red:#f87171; }}
-  * {{ box-sizing:border-box; margin:0; padding:0; }}
-  body {{ background:var(--bg); color:var(--text); font-family:-apple-system,sans-serif; padding:1.5rem; }}
-  h1 {{ font-size:1.4rem; font-weight:600; margin-bottom:4px; }}
-  .sub {{ color:var(--sub); font-size:.85rem; margin-bottom:2rem; }}
-  .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1rem; margin-bottom:2rem; }}
-  .card {{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:1.25rem; }}
-  .card-label {{ font-size:.75rem; color:var(--sub); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }}
-  .card-value {{ font-size:1.8rem; font-weight:600; }}
-  .card-sub {{ font-size:.8rem; color:var(--sub); margin-top:4px; }}
-  .badge {{ display:inline-block; font-size:.7rem; padding:2px 8px; border-radius:20px; margin-left:8px; vertical-align:middle; }}
-  .badge-green {{ background:#166534; color:#4ade80; }}
-  .badge-yellow {{ background:#78350f; color:#fbbf24; }}
-  .chart-wrap {{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:1.25rem; margin-bottom:1.5rem; }}
-  .chart-title {{ font-size:.9rem; font-weight:600; margin-bottom:1rem; }}
-  .chart-title span {{ color:var(--sub); font-weight:400; font-size:.8rem; margin-left:8px; }}
-  canvas {{ max-height:260px; }}
-  .soglia-line {{ font-size:.8rem; color:var(--sub); margin-top:8px; }}
-  table {{ width:100%; border-collapse:collapse; font-size:.85rem; }}
-  th {{ color:var(--sub); font-weight:500; text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); }}
-  td {{ padding:8px 8px; border-bottom:1px solid var(--border); }}
-  tr:last-child td {{ border-bottom:none; }}
-  .down {{ color:var(--green); }} .up {{ color:var(--red); }}
-  .update {{ color:var(--sub); font-size:.75rem; text-align:right; margin-top:1rem; }}
+:root{{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e2e8f0;--sub:#8892a4;--green:#4ade80;--red:#f87171;}}
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{background:var(--bg);color:var(--text);font-family:-apple-system,sans-serif;padding:1.5rem;}}
+h1{{font-size:1.4rem;font-weight:600;margin-bottom:4px;}}
+.sub{{color:var(--sub);font-size:.85rem;margin-bottom:2rem;}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin-bottom:2rem;}}
+.card{{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1.25rem;}}
+.card-label{{font-size:.75rem;color:var(--sub);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;}}
+.card-value{{font-size:1.8rem;font-weight:600;}}
+.card-sub{{font-size:.8rem;color:var(--sub);margin-top:4px;}}
+.badge{{display:inline-block;font-size:.7rem;padding:2px 8px;border-radius:20px;margin-left:8px;vertical-align:middle;}}
+.badge-green{{background:#166534;color:#4ade80;}}.badge-yellow{{background:#78350f;color:#fbbf24;}}
+.chart-wrap{{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1.25rem;margin-bottom:1.5rem;}}
+.chart-title{{font-size:.9rem;font-weight:600;margin-bottom:1rem;}}
+.chart-title span{{color:var(--sub);font-weight:400;font-size:.8rem;margin-left:8px;}}
+canvas{{max-height:260px;}}
+.soglia-line{{font-size:.8rem;color:var(--sub);margin-top:8px;}}
+table{{width:100%;border-collapse:collapse;font-size:.85rem;}}
+th{{color:var(--sub);font-weight:500;text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);}}
+td{{padding:8px;border-bottom:1px solid var(--border);}}
+tr:last-child td{{border-bottom:none;}}
+.down{{color:var(--green);}}.up{{color:var(--red);}}
+.update{{color:var(--sub);font-size:.75rem;text-align:right;margin-top:1rem;}}
 </style>
 </head>
 <body>
-<h1>📊 Dashboard Prezzi — Alghero 2026</h1>
-<div class="sub">Aggiornamento: {ora} · ogni ora automatico · solo ITA Airways (bagaglio incluso)</div>
-
+<h1>Dashboard Prezzi Alghero 2026</h1>
+<div class="sub">Aggiornamento: {ora} - ogni ora automatico - solo ITA Airways (bagaglio incluso)</div>
 <div class="grid" id="kpis"></div>
-
 <div class="chart-wrap">
-  <div class="chart-title">✈️ Voli ITA Airways → Alghero <span>A/R 2 persone · € · bagaglio incluso</span></div>
+  <div class="chart-title">Voli ITA Airways verso Alghero <span>A/R 2 persone EUR - bagaglio incluso</span></div>
   <canvas id="chartVoli"></canvas>
-  <div class="soglia-line">— soglia ottima: €{SOGLIE_OTTIME['volo']}</div>
+  <div class="soglia-line">soglia ottima: EUR{soglia_volo}</div>
 </div>
 <div class="chart-wrap">
-  <div class="chart-title">⛴️ Traghetto Civitavecchia→Porto Torres <span>A/R 2 persone · €</span></div>
+  <div class="chart-title">Traghetto Civitavecchia-Porto Torres <span>A/R 2 persone EUR</span></div>
   <canvas id="chartTraghetti"></canvas>
-  <div class="soglia-line">— soglia ottima: €{SOGLIE_OTTIME['traghetto']}</div>
+  <div class="soglia-line">soglia ottima: EUR{soglia_traghetto}</div>
 </div>
 <div class="chart-wrap">
-  <div class="chart-title">🏠 Appartamenti Alghero (2 camere) <span>€/notte</span></div>
+  <div class="chart-title">Appartamenti Alghero 2 camere <span>EUR/notte</span></div>
   <canvas id="chartAlloggi"></canvas>
-  <div class="soglia-line">— soglia ottima: €{SOGLIE_OTTIME['alloggio']}/notte</div>
+  <div class="soglia-line">soglia ottima: EUR{soglia_alloggio}/notte</div>
 </div>
 <div class="chart-wrap">
-  <div class="chart-title">📋 Ultimi prezzi rilevati</div>
+  <div class="chart-title">Ultimi prezzi rilevati</div>
   <table>
-    <thead><tr><th>Categoria</th><th>Tratta / Date</th><th>Prezzo</th><th>Var.</th></tr></thead>
+    <thead><tr><th>Categoria</th><th>Tratta/Date</th><th>Prezzo</th><th>Variazione</th></tr></thead>
     <tbody id="tbody"></tbody>
   </table>
 </div>
-<div class="update">Dati raccolti automaticamente · GitHub Actions · aggiornamento ogni ora</div>
-
+<div class="update">Dati raccolti automaticamente via GitHub Actions</div>
 <script>
-const storico = {json.dumps(storico, ensure_ascii=False)};
-const SOGLIE = {json.dumps(SOGLIE_OTTIME)};
-const colori = ["#4F8EF7","#fb923c","#4ade80","#c084fc","#f87171","#fbbf24"];
-
-function buildDs(prefisso) {{
-  const ds = []; let i = 0;
-  for (const [k,v] of Object.entries(storico)) {{
-    if (!k.startsWith(prefisso)||!v||!v.length) {{ continue; }}
-    const label = k.replace(prefisso+'_','').replace(/_/g,'→');
-    const punti = v.map(p=>({{x:new Date(p.ts),y:typeof p.v==='object'?p.v.per_notte:p.v}})).filter(p=>p.y);
-    if (!punti.length) {{ i++; continue; }}
-    ds.push({{label,data:punti,borderColor:colori[i%colori.length],backgroundColor:colori[i%colori.length]+'22',tension:.3,fill:false,pointRadius:4}});
+const storico={storico_json};
+const SOGLIE={soglie_json};
+const colori=["#4F8EF7","#fb923c","#4ade80","#c084fc","#f87171","#fbbf24"];
+function buildDs(pref){{
+  const ds=[];let i=0;
+  for(const[k,v] of Object.entries(storico)){{
+    if(!k.startsWith(pref)||!v||!v.length)continue;
+    const label=k.replace(pref+'_','').replace(/_/g,' ');
+    const pts=v.map(p=>({{x:new Date(p.ts),y:typeof p.v==='object'?p.v.per_notte:p.v}})).filter(p=>p.y);
+    if(!pts.length){{i++;continue;}}
+    ds.push({{label,data:pts,borderColor:colori[i%colori.length],backgroundColor:colori[i%colori.length]+'22',tension:.3,fill:false,pointRadius:4}});
     i++;
   }}
   return ds;
 }}
-
-const opts = {{responsive:true,plugins:{{legend:{{labels:{{color:'#8892a4',font:{{size:11}}}}}}}},scales:{{x:{{type:'time',time:{{unit:'hour',displayFormats:{{hour:'dd/MM HH:mm'}}}},ticks:{{color:'#8892a4',maxTicksLimit:8}},grid:{{color:'#2a2d3a'}}}},y:{{ticks:{{color:'#8892a4',callback:v=>'€'+v}},grid:{{color:'#2a2d3a'}}}}}}}};
-
-[['Voli','volo'],['Traghetti','traghetto'],['Alloggi','alloggio']].forEach(([nome,key])=>{{
-  const ds = buildDs(key);
-  const ctx = document.getElementById('chart'+nome).getContext('2d');
-  if (ds.length) new Chart(ctx,{{type:'line',data:{{datasets:ds}},options:opts}});
+const opts={{responsive:true,plugins:{{legend:{{labels:{{color:'#8892a4',font:{{size:11}}}}}}}},scales:{{x:{{type:'time',time:{{unit:'hour',displayFormats:{{hour:'dd/MM HH:mm'}}}},ticks:{{color:'#8892a4',maxTicksLimit:8}},grid:{{color:'#2a2d3a'}}}},y:{{ticks:{{color:'#8892a4',callback:v=>'EUR'+v}},grid:{{color:'#2a2d3a'}}}}}}}};
+[['Voli','volo'],['Traghetti','traghetto'],['Alloggi','alloggio']].forEach(([n,k])=>{{
+  const ds=buildDs(k);
+  const ctx=document.getElementById('chart'+n).getContext('2d');
+  if(ds.length)new Chart(ctx,{{type:'line',data:{{datasets:ds}},options:opts}});
   else ctx.canvas.parentElement.insertAdjacentHTML('beforeend','<p style="color:#8892a4;padding:1rem">Dati in raccolta...</p>');
 }});
-
-// KPI
-function ultimoMin(pref) {{
-  let min=null;
-  for (const [k,v] of Object.entries(storico)) {{
-    if(!k.startsWith(pref)||!v||!v.length) continue;
-    const last=v[v.length-1]; const val=typeof last.v==='object'?last.v.per_notte:last.v;
-    if(val&&(min===null||val<min)) min=val;
-  }}
-  return min;
-}}
-function trend(pref) {{
-  for (const [k,v] of Object.entries(storico)) {{
-    if(!k.startsWith(pref)||!v||v.length<2) continue;
-    const a=typeof v[v.length-2].v==='object'?v[v.length-2].v.per_notte:v[v.length-2].v;
-    const b=typeof v[v.length-1].v==='object'?v[v.length-1].v.per_notte:v[v.length-1].v;
-    if(a&&b) return b<a?'↓':b>a?'↑':'→';
-  }}
-  return '–';
-}}
-const kpis=[
-  {{label:'Volo ITA minimo (A/R 2 pers)',pref:'volo',soglia:SOGLIE.volo,extra:''}},
-  {{label:'Traghetto minimo (A/R 2 pers)',pref:'traghetto',soglia:SOGLIE.traghetto,extra:''}},
-  {{label:'Alloggio minimo',pref:'alloggio',soglia:SOGLIE.alloggio,extra:'/notte'}},
-];
+function uMin(p){{let m=null;for(const[k,v] of Object.entries(storico)){{if(!k.startsWith(p)||!v||!v.length)continue;const l=v[v.length-1];const val=typeof l.v==='object'?l.v.per_notte:l.v;if(val&&(m===null||val<m))m=val;}}return m;}}
+function trnd(p){{for(const[k,v] of Object.entries(storico)){{if(!k.startsWith(p)||!v||v.length<2)continue;const a=typeof v[v.length-2].v==='object'?v[v.length-2].v.per_notte:v[v.length-2].v;const b=typeof v[v.length-1].v==='object'?v[v.length-1].v.per_notte:v[v.length-1].v;if(a&&b)return b<a?'sceso':b>a?'salito':'stabile';}}return '-';}}
+const kpis=[{{label:'Volo ITA minimo A/R 2 pers',p:'volo',s:SOGLIE.volo,e:''}},{{label:'Traghetto minimo A/R 2 pers',p:'traghetto',s:SOGLIE.traghetto,e:''}},{{label:'Alloggio minimo',p:'alloggio',s:SOGLIE.alloggio,e:'/notte'}}];
 const kDiv=document.getElementById('kpis');
-kpis.forEach(k=>{{
-  const v=ultimoMin(k.pref); const t=trend(k.pref);
-  const tc=t==='↓'?'down':t==='↑'?'up':'';
-  const bc=v&&v<=k.soglia?'badge-green':'badge-yellow';
-  const bt=v&&v<=k.soglia?'ottimo':'in monitoraggio';
-  kDiv.innerHTML+=`<div class="card"><div class="card-label">${{k.label}}</div><div class="card-value">${{v?'€'+Math.round(v)+k.extra:'–'}}<span class="badge ${{bc}}">${{bt}}</span></div><div class="card-sub">Trend: <span class="${{tc}}">${{t}}</span> · Soglia: €${{k.soglia}}${{k.extra}}</div></div>`;
-}});
-
-// Tabella
+kpis.forEach(k=>{{const v=uMin(k.p);const t=trnd(k.p);const tc=t==='sceso'?'down':t==='salito'?'up':'';const bc=v&&v<=k.s?'badge-green':'badge-yellow';const bt=v&&v<=k.s?'ottimo':'in monitoraggio';kDiv.innerHTML+=`<div class="card"><div class="card-label">${{k.label}}</div><div class="card-value">${{v?'EUR'+Math.round(v)+k.e:'-'}}<span class="badge ${{bc}}">${{bt}}</span></div><div class="card-sub">Trend: <span class="${{tc}}">${{t}}</span> - Soglia: EUR${{k.s}}${{k.e}}</div></div>`;}});
 const tbody=document.getElementById('tbody');
-const emj={{volo:'✈️',traghetto:'⛴️',alloggio:'🏠'}};
-for(const[k,v] of Object.entries(storico)){{
-  if(!v||!v.length) continue;
-  const tipo=k.split('_')[0];
-  const label=k.replace(tipo+'_','').replace(/_/g,' ');
-  const last=v[v.length-1]; const prev=v.length>1?v[v.length-2]:null;
-  const val=typeof last.v==='object'?last.v.per_notte:last.v;
-  const vp=prev?(typeof prev.v==='object'?prev.v.per_notte:prev.v):null;
-  if(!val) continue;
-  const diff=vp?Math.round(val-vp):0;
-  const dt=diff===0?'–':diff<0?`<span class="down">▼ €${{Math.abs(diff)}}</span>`:`<span class="up">▲ €${{diff}}</span>`;
-  tbody.innerHTML+=`<tr><td>${{emj[tipo]||''}} ${{tipo}}</td><td>${{label}}</td><td><b>€${{Math.round(val)}}</b></td><td>${{dt}}</td></tr>`;
-}}
-if(!tbody.innerHTML) tbody.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--sub);padding:2rem">Dati in raccolta — torna tra qualche ora</td></tr>';
+const emj={{volo:'Volo',traghetto:'Traghetto',alloggio:'Alloggio'}};
+for(const[k,v] of Object.entries(storico)){{if(!v||!v.length)continue;const tipo=k.split('_')[0];const label=k.replace(tipo+'_','').replace(/_/g,' ');const last=v[v.length-1];const prev=v.length>1?v[v.length-2]:null;const val=typeof last.v==='object'?last.v.per_notte:last.v;const vp=prev?(typeof prev.v==='object'?prev.v.per_notte:prev.v):null;if(!val)continue;const diff=vp?Math.round(val-vp):0;const dt=diff===0?'-':diff<0?`<span class="down">EUR${{Math.abs(diff)}} in meno</span>`:`<span class="up">EUR${{diff}} in piu</span>`;tbody.innerHTML+=`<tr><td>${{emj[tipo]||tipo}}</td><td>${{label}}</td><td><b>EUR${{Math.round(val)}}</b></td><td>${{dt}}</td></tr>`;}}
+if(!tbody.innerHTML)tbody.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--sub);padding:2rem">Dati in raccolta - torna tra qualche ora</td></tr>';
 </script>
 </body>
 </html>"""
     FILE_DASHBOARD.parent.mkdir(exist_ok=True)
     FILE_DASHBOARD.write_text(html)
-    print(f"[DASHBOARD] generata → docs/index.html")
-
-# ─── MAIN ──────────────────────────────────────────────────────────────────────
+    print(f"[DASHBOARD] generata -> docs/index.html")
 
 def main():
     print(f"\n{'='*50}")
-    print(f"Bot Alghero v3 · {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    print(f"Bot Alghero v3 - {datetime.now().strftime('%d/%m/%Y %H:%M')}")
     print(f"{'='*50}")
 
     storico = carica_storico()
@@ -482,13 +417,12 @@ def main():
 
     for (data_andata, data_ritorno) in DATE_FINESTRE:
         notti = (datetime.strptime(data_ritorno,"%Y-%m-%d") - datetime.strptime(data_andata,"%Y-%m-%d")).days
-        label_date = f"{data_andata}→{data_ritorno} ({notti}n)"
-        print(f"\n▸ {label_date}")
+        label_date = f"{data_andata}->{data_ritorno} ({notti}n)"
+        print(f"\n- {label_date}")
 
-        # ── Voli ITA su tutte le tratte ──
         for (iata_da, iata_a, nome_citta) in TRATTE_VOLO:
             chiave_volo = f"volo_{iata_da}_{data_andata}_{data_ritorno}"
-            print(f"  ✈️  {nome_citta} → Alghero (ITA Airways)")
+            print(f"  Volo {nome_citta} -> Alghero (ITA Airways)")
             pv = cerca_volo_ita(iata_da, iata_a, data_andata, data_ritorno)
             pausa()
             if pv:
@@ -497,13 +431,12 @@ def main():
                 serie.append({"ts": ora_iso, "v": pv})
                 notifiche += controlla_notifiche(
                     chiave_volo, pv, vecchio, SOGLIE_OTTIME["volo"],
-                    f"✈️ ITA Airways {nome_citta}→Alghero A/R 2 pers · {label_date}\n💼 Bagaglio a mano + zaino inclusi",
-                    f"https://www.ita-airways.com/it_it/voli.html?from={iata_da}&to={iata_a}&departureDate={data_andata}&returnDate={data_ritorno}&adults=2&cabin=ECONOMY"
+                    f"Volo ITA Airways {nome_citta}->Alghero A/R 2 pers - {label_date}\nBagaglio a mano + zaino inclusi",
+                    ita_link(iata_da, iata_a, data_andata, data_ritorno)
                 )
 
-        # ── Traghetto ──
         chiave_traghetto = f"traghetto_{data_andata}_{data_ritorno}"
-        print(f"  ⛴️  Civitavecchia → Porto Torres (Grimaldi)")
+        print(f"  Traghetto Civitavecchia -> Porto Torres")
         pt = cerca_traghetto(data_andata, data_ritorno)
         pausa()
         if pt:
@@ -512,13 +445,12 @@ def main():
             serie.append({"ts": ora_iso, "v": pt})
             notifiche += controlla_notifiche(
                 chiave_traghetto, pt, vecchio, SOGLIE_OTTIME["traghetto"],
-                f"⛴️ Traghetto Civitavecchia→Porto Torres A/R 2 pers · {label_date}\n🧳 Nessun limite bagaglio",
+                f"Traghetto Civitavecchia->Porto Torres A/R 2 pers - {label_date}\nNessun limite bagaglio",
                 f"https://www.traghetti.com/it/biglietti-traghetto?departure=Civitavecchia&arrival=Porto+Torres&outward_date={data_andata}&return_date={data_ritorno}&adults=2"
             )
 
-        # ── Alloggio ──
         chiave_alloggio = f"alloggio_{data_andata}_{data_ritorno}"
-        print(f"  🏠  Appartamenti Alghero (2 camere)")
+        print(f"  Appartamenti Alghero (2 camere)")
         pa = cerca_alloggio(data_andata, data_ritorno)
         pausa()
         if pa:
@@ -527,11 +459,10 @@ def main():
             serie.append({"ts": ora_iso, "v": pa})
             notifiche += controlla_notifiche(
                 chiave_alloggio, pa["per_notte"], vecchio, SOGLIE_OTTIME["alloggio"],
-                f"🏠 Appartamento Alghero (2 camere) · {label_date}",
+                f"Appartamento Alghero (2 camere) - {label_date}",
                 f"https://www.airbnb.it/s/Alghero/homes?checkin={data_andata}&checkout={data_ritorno}&adults=2&min_bedrooms=2"
             )
 
-    # ── Notifiche ──
     if notifiche:
         print(f"\n[TG] Invio {len(notifiche)} notifiche...")
         for msg in notifiche:
@@ -540,22 +471,21 @@ def main():
     else:
         print("\n[INFO] Nessuna variazione significativa.")
 
-    # ── Riepilogo mattutino alle 9 ──
     if datetime.now().hour == 9:
-        righe = [f"📊 <b>Riepilogo mattutino</b> · {datetime.now().strftime('%d/%m %H:%M')}\n"]
-        for tipo, emoji in [("volo","✈️"),("traghetto","⛴️"),("alloggio","🏠")]:
+        righe = [f"<b>Riepilogo mattutino</b> - {datetime.now().strftime('%d/%m %H:%M')}\n"]
+        for tipo, emoji in [("volo","Voli"),("traghetto","Traghetti"),("alloggio","Alloggi")]:
             for chiave, serie in storico.items():
                 if not chiave.startswith(tipo) or not serie: continue
                 last = serie[-1]["v"]
                 val = last["per_notte"] if isinstance(last, dict) else last
                 if val:
-                    label = chiave.replace(f"{tipo}_","").replace("_","→")
-                    righe.append(f"{emoji} {label}: <b>€{val:.0f}</b>")
+                    label = chiave.replace(f"{tipo}_","").replace("_"," ")
+                    righe.append(f"{emoji} {label}: <b>EUR{val:.0f}</b>")
         telegram("\n".join(righe))
 
     salva_storico(storico)
     genera_dashboard(storico)
-    print(f"\n✓ Done · {datetime.now().strftime('%H:%M:%S')}")
+    print(f"\nDone - {datetime.now().strftime('%H:%M:%S')}")
 
 if __name__ == "__main__":
     main()
