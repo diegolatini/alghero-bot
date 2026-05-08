@@ -135,9 +135,7 @@ def cerca_volo_ita(iata_da, iata_a, data_andata, data_ritorno):
     # Tentativo 2: ITA Airways sito ufficiale
     try:
         pausa(3, 5)
-        url2 = (f"https://www.ita-airways.com/it_it/voli.html"
-                f"?from={iata_da}&to={iata_a}"
-                f"&departureDate={data_andata}&returnDate={data_ritorno}&adults=2&cabin=ECONOMY")
+        url2 = https://www.ita-airways.com/it/it/flights/search?from={iata_da}&to={iata_a}&departureDate={data_andata}&returnDate={data_ritorno}&adults=2&cabin=ECONOMY
         html2 = browser_get(url2, wait_selector="[class*='price'],[class*='fare']", timeout=40000)
         if html2:
             soup2 = BeautifulSoup(html2, "html.parser")
