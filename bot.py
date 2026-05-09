@@ -155,7 +155,7 @@ def cerca_volo_ita(iata_da, iata_a, data_andata, data_ritorno):
         url3 = (f"https://www.volagratis.com/voli/a/{iata_da}/{iata_a}/"
                 f"?departureDate={data_andata}&returnDate={data_ritorno}&adults=2&airlines=ITA")
         r3 = SESSIONE.get(url3, headers=hdrs(), timeout=20)
-        if any(k in r3.text for k in ["ITA", "ita airways"]):
+        if any(k in r3.text for k in ["ITA Airways", "ita airways"]):
             matches3 = re.findall(r'EUR\s*(\d{2,4})', r3.text)
             valori3 = [int(m) for m in matches3 if 80 < int(m) < 5000]
             if valori3:
