@@ -111,7 +111,7 @@ def cerca_volo_ita(iata_da, iata_a, data_andata, data_ritorno):
         if html:
             soup = BeautifulSoup(html, "html.parser")
             testo_pagina = soup.get_text()
-            if any(k in testo_pagina for k in ["ITA", "Ita Airways", "ita airways"]):
+            if any(k in testo_pagina for k in ["ITA Airways", "Ita Airways", "ita-airways"]):
                 prezzi = []
                 for el in soup.find_all(attrs={"class": re.compile(r'price|Price', re.I)}):
                     v = estrai_primo_numero(el.get_text())
