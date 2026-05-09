@@ -100,13 +100,13 @@ def browser_get(url, wait_selector=None, timeout=35000):
 def ita_link(iata_da, iata_a, data_andata, data_ritorno):
     return (f"https://www.kayak.it/flights/{iata_da}-{iata_a}"
             f"/{data_andata}/{data_ritorno}/2adults"
-            f"?airlines=ITA&sort=price_a")
+            f"?fs=airlines=ITA&sort=price_a")
 
 def cerca_volo_ita(iata_da, iata_a, data_andata, data_ritorno):
     # Tentativo 1: Kayak filtrato ITA Airways
     try:
         url = (f"https://www.kayak.it/flights/{iata_da}-{iata_a}"
-               f"/{data_andata}/{data_ritorno}/2adults?airlines=ITA&sort=price_a")
+               f"/{data_andata}/{data_ritorno}/2adults?fs=airlines=ITA&sort=price_a")
         html = browser_get(url, wait_selector="[class*='price']")
         if html:
             soup = BeautifulSoup(html, "html.parser")
